@@ -1,3 +1,12 @@
+/**
+ * @deprecated senpi support is not yet integrated into the pi.extensions
+ * manifest. This entry file is retained for future use when pi-mono's
+ * extension loader can handle failed entries without exiting the entire
+ * process.
+ *
+ * See ARCHITECTURE.md for the rationale and migration path.
+ */
+
 import {
   createBashToolDefinition,
   createEditToolDefinition,
@@ -6,19 +15,11 @@ import {
 } from "@code-yeongyu/senpi";
 import { createExtensionFactory } from "./extension-factory.js";
 
-/**
- * pi-mono `ExtensionFactory` entry bound to the
- * `@code-yeongyu/senpi` fork.
- *
- * Loaded by senpi via `package.json#pi.extensions` when the host runtime
- * resolves `@code-yeongyu/senpi` successfully. Under the canonical
- * `@mariozechner/pi-coding-agent` host, jiti's virtualModules alias for
- * `@code-yeongyu/senpi` is absent and the host loader silently skips
- * this entry, letting `entry-pi.js` take over.
- */
-export default createExtensionFactory({
+const factories = {
   createBashToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
   createEditToolDefinition,
-});
+};
+
+export default createExtensionFactory(factories);
