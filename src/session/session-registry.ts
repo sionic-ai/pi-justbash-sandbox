@@ -6,6 +6,12 @@ import { SandboxSession } from "./sandbox-session.js";
 export interface SandboxSessionRegistryOptions {
   /** Base directory shared by every {@link SandboxSession} in this registry. */
   readonly baseDir: string;
+  /**
+   * When `true`, every acquired session uses `baseDir` directly as its
+   * root instead of creating a per-session `sess-<id>-<hex>` subdirectory.
+   * This lets tools write directly into the workspace (e.g. `/workspace`).
+   */
+  readonly flat?: boolean;
 }
 
 /**
@@ -17,10 +23,12 @@ export interface SandboxSessionRegistryOptions {
  */
 export class SandboxSessionRegistry {
   readonly #baseDir: string;
+  readonly #flat: boolean;
   readonly #sessions = new Map<string, SandboxSession>();
 
   constructor(options: SandboxSessionRegistryOptions) {
     this.#baseDir = options.baseDir;
+    this.#flat = options.flat === true;
   }
 
   /**
@@ -34,7 +42,7 @@ export class SandboxSessionRegistry {
     if (cached !== undefined) {
       return cached;
     }
-    const session = new SandboxSession({ baseDir: this.#baseDir, sessionId });
+    const session = new SandboxSession({ baseDir: this.#baseDir, sessionId, flat: this.#flat });
     await session.ensure();
     this.#sessions.set(sessionId, session);
     return session;
