@@ -1,0 +1,65 @@
+{
+  "name": "@sionic-ai/pi-justbash-sandbox",
+  "version": "0.0.0",
+  "description": "Sandboxed bash, read, write, and edit tools for pi-coding-agent backed by just-bash",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsgo -p tsconfig.build.json",
+    "dev": "tsgo -p tsconfig.build.json --watch",
+    "typecheck": "tsgo --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "just-bash": "^2.14.2"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.67.68"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@mariozechner/pi-coding-agent": "^0.67.68",
+    "@types/node": "^22.15.3",
+    "@typescript/native-preview": "^7.0.0-dev.20260419.1",
+    "@vitest/coverage-v8": "^4.1.4",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=20.11",
+    "pnpm": ">=9",
+    "bun": ">=1.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sionic-ai/pi-justbash-sandbox.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "pi",
+    "pi-mono",
+    "pi-coding-agent",
+    "sandbox",
+    "just-bash",
+    "bash"
+  ]
+}
