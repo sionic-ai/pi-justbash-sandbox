@@ -64,6 +64,14 @@ async function bootExtensionForSession(sandboxRoot: string, sessionId: string) {
   return { ...handle, ctx, root };
 }
 
+function mustTool(tools: FakeApiHandle["tools"], name: string) {
+  const tool = tools.get(name);
+  if (tool === undefined) {
+    throw new Error(`expected tool ${name} to be registered`);
+  }
+  return tool;
+}
+
 describe("extension tool_call integration", () => {
   let sandboxBase: string;
 
@@ -80,23 +88,29 @@ describe("extension tool_call integration", () => {
     const outsideFile = path.join(sandboxBase, "outside.txt");
     await import("node:fs/promises").then((m) => m.writeFile(outsideFile, "host-only", "utf8"));
     const { tools, ctx, root } = await bootExtensionForSession(sandboxBase, "ses-bash");
-    const bash = tools.get("bash");
-    expect(bash).toBeDefined();
+    const bash = mustTool(tools, "bash");
     const chunks: string[] = [];
+    const collect = (partial: unknown) => {
+      const content = (partial as { content?: unknown[] } | undefined)?.content;
+      if (!Array.isArray(content)) {
+        return;
+      }
+      for (const c of content) {
+        if (c && typeof c === "object" && (c as { type?: string }).type === "text") {
+          const text = (c as { text?: unknown }).text;
+          if (typeof text === "string") {
+            chunks.push(text);
+          }
+        }
+      }
+    };
 
     // when
-    const result = (await bash!.execute(
+    const result = (await bash.execute(
       "call-bash",
       { command: "ls /" },
       undefined,
-      // biome-ignore lint/suspicious/noExplicitAny: onUpdate signature doesn't match here; we collect through bash's own streaming.
-      ((partial: any) => {
-        for (const c of partial?.content ?? []) {
-          if (c && typeof c === "object" && c.type === "text" && typeof c.text === "string") {
-            chunks.push(c.text);
-          }
-        }
-      }) as any,
+      collect,
       ctx,
     )) as { content: { type: string; text?: string }[] };
 
@@ -112,21 +126,19 @@ describe("extension tool_call integration", () => {
   it("write + read tools round-trip inside the sandbox root", async () => {
     // given
     const { tools, ctx, root } = await bootExtensionForSession(sandboxBase, "ses-rw");
-    const write = tools.get("write");
-    const read = tools.get("read");
-    expect(write).toBeDefined();
-    expect(read).toBeDefined();
+    const write = mustTool(tools, "write");
+    const read = mustTool(tools, "read");
     const target = path.join(root, "note.txt");
 
     // when
-    await write!.execute(
+    await write.execute(
       "call-write",
       { path: target, content: "hello pi" },
       undefined,
       undefined,
       ctx,
     );
-    const readResult = (await read!.execute(
+    const readResult = (await read.execute(
       "call-read",
       { path: target },
       undefined,
@@ -147,20 +159,17 @@ describe("extension tool_call integration", () => {
   it("write tool refuses to write outside the sandbox", async () => {
     // given
     const { tools, ctx } = await bootExtensionForSession(sandboxBase, "ses-escape");
-    const write = tools.get("write");
-    expect(write).toBeDefined();
+    const write = mustTool(tools, "write");
     const outside = path.join(path.dirname(sandboxBase), "host-owned.txt");
 
     // when
-    const result = (await write!
+    const result = await write
       .execute("call-escape", { path: outside, content: "bad" }, undefined, undefined, ctx)
-      .catch((e: unknown) => ({ threw: e }))) as unknown;
+      .catch((e: unknown) => ({ threw: e }));
 
     // then — either the tool returned an error result or it threw; in
     // both cases the outside file must not exist.
     expect(existsSync(outside)).toBe(false);
-    // Tolerate both shapes: pi's WriteAdapter may surface as a thrown
-    // error (preferred) or an isError tool result.
     if (
       result !== null &&
       typeof result === "object" &&
@@ -173,12 +182,11 @@ describe("extension tool_call integration", () => {
   it("grep tool short-circuits with a sandbox notice", async () => {
     // given
     const { tools, ctx } = await bootExtensionForSession(sandboxBase, "ses-grep");
-    const grep = tools.get("grep");
-    expect(grep).toBeDefined();
+    const grep = mustTool(tools, "grep");
 
     // when / then
     await expect(
-      grep!.execute("call-grep", { pattern: "anything" }, undefined, undefined, ctx),
+      grep.execute("call-grep", { pattern: "anything" }, undefined, undefined, ctx),
     ).rejects.toThrow(/sandbox/i);
   });
 });
