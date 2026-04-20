@@ -1,5 +1,6 @@
-import { type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { SandboxSession } from "../session/sandbox-session.js";
+import type { ToolFactories } from "./tool-factories.js";
 /**
  * Options for {@link registerSandboxTools}.
  */
@@ -8,6 +9,15 @@ export interface RegisterSandboxToolsOptions {
     readonly session: SandboxSession;
     /** Override the max file read size passed to the sandbox fs. */
     readonly maxFileReadSize?: number;
+    /**
+     * Host-specific `create{Bash,Read,Write,Edit}ToolDefinition` factories.
+     *
+     * Provided by the active entry file (`entry-pi.ts` or
+     * `entry-senpi.ts`) so this module carries no hard import of either
+     * host package. Only the `ExtensionAPI` type comes from
+     * `@mariozechner/pi-coding-agent` and is erased at runtime.
+     */
+    readonly factories: ToolFactories;
 }
 /**
  * Register the sandboxed replacements for the built-in pi-mono tools
@@ -16,6 +26,8 @@ export interface RegisterSandboxToolsOptions {
  * pi-mono's `ExtensionRunner` applies a first-registration-wins rule per
  * tool name, so calling this during extension factory initialization
  * shadows the host-touching defaults with sandbox-bound equivalents.
+ *
+ * @see ToolFactories
  */
 export declare function registerSandboxTools(api: ExtensionAPI, options: RegisterSandboxToolsOptions): void;
 //# sourceMappingURL=register-tools.d.ts.map

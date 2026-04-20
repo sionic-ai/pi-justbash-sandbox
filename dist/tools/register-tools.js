@@ -1,4 +1,3 @@
-import { createBashToolDefinition, createEditToolDefinition, createReadToolDefinition, createWriteToolDefinition, } from "@mariozechner/pi-coding-agent";
 import { BashAdapter } from "../adapters/bash-adapter.js";
 import { EditAdapter } from "../adapters/edit-adapter.js";
 import { ReadAdapter } from "../adapters/read-adapter.js";
@@ -11,6 +10,8 @@ import { createSandboxFs } from "../fs/create-sandbox-fs.js";
  * pi-mono's `ExtensionRunner` applies a first-registration-wins rule per
  * tool name, so calling this during extension factory initialization
  * shadows the host-touching defaults with sandbox-bound equivalents.
+ *
+ * @see ToolFactories
  */
 export function registerSandboxTools(api, options) {
     const root = options.session.getRoot();
@@ -22,6 +23,7 @@ export function registerSandboxTools(api, options) {
     const read = new ReadAdapter({ fs, root });
     const write = new WriteAdapter({ fs, root });
     const edit = new EditAdapter({ fs, root });
+    const { createBashToolDefinition, createReadToolDefinition, createWriteToolDefinition, createEditToolDefinition, } = options.factories;
     api.registerTool(createBashToolDefinition(root, { operations: bash }));
     api.registerTool(createReadToolDefinition(root, { operations: read }));
     api.registerTool(createWriteToolDefinition(root, { operations: write }));

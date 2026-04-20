@@ -1,10 +1,14 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 /**
- * pi-mono {@link @mariozechner/pi-coding-agent#ExtensionFactory} entry
- * point for `@sionic-ai/pi-justbash-sandbox`.
+ * Public entry point for `@sionic-ai/pi-justbash-sandbox`.
  *
- * Load it either by listing this package in `.pi/settings.json` under
- * `packages` / `extensions`, or by embedding it directly:
+ * Most users should not import this module directly — pi-mono loads the
+ * compiled `dist/entry-pi.js` (canonical pi host) or
+ * `dist/entry-senpi.js` (senpi host) automatically through
+ * `package.json#pi.extensions`.
+ *
+ * This module re-exports the pi-bound entry as the package default so
+ * that existing inline consumers (e.g. embedding via
+ * `DefaultResourceLoader`) keep working:
  *
  * ```ts
  * import { DefaultResourceLoader } from "@mariozechner/pi-coding-agent";
@@ -15,20 +19,12 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
  * });
  * ```
  *
- * On load it:
- * - Registers CLI flags (`--sandbox-root`, `--sandbox-max-file-size-mb`).
- * - Runs the orphan reaper once so stale sandbox dirs from previous
- *   runs are cleaned up best-effort.
- * - Registers a grep replacement tool + a tool_call blocker so any
- *   grep invocation short-circuits with a sandbox notice.
- * - Installs the session lifecycle hooks that create / tear down a
- *   per-pi-session sandbox root.
- * - On every `session_start`, registers (and thereby re-binds) the
- *   sandboxed bash/read/write/edit tools against the current session's
- *   root so pi-mono's first-registration-wins rule shadows the host-
- *   touching defaults.
- * - Installs process signal handlers (SIGINT/SIGTERM/SIGHUP) that drain
- *   the session registry before the process exits.
+ * @see {@link ./entry-pi.ts} — the pi-bound factory this file wraps.
+ * @see {@link ./entry-senpi.ts} — the senpi-bound factory (loaded in parallel).
  */
-export default function createJustBashExtension(api: ExtensionAPI): Promise<void>;
+export { default } from "./entry-pi.js";
+export { createExtensionFactory } from "./extension-factory.js";
+export type { RegisterSandboxToolsOptions } from "./tools/register-tools.js";
+export { registerSandboxTools } from "./tools/register-tools.js";
+export type { ToolFactories } from "./tools/tool-factories.js";
 //# sourceMappingURL=index.d.ts.map
