@@ -1,5 +1,5 @@
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
-import { Bash, type IFileSystem } from "just-bash";
+import { Bash, type Command, type IFileSystem } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
 
 /**
@@ -10,6 +10,13 @@ export interface BashAdapterOptions {
   readonly fs: IFileSystem;
   /** Host-absolute sandbox root (used to translate host cwds to virtual paths). */
   readonly root: string;
+  /**
+   * Extra just-bash command definitions to register on every shell
+   * instance. Callers use this to expose host binaries (e.g. `storm`,
+   * `carrier-lint`) into the sandboxed shell; see
+   * {@link ../adapters/host-binary-bridge.ts}.
+   */
+  readonly customCommands?: readonly Command[];
 }
 
 /**
@@ -21,10 +28,12 @@ export interface BashAdapterOptions {
 export class BashAdapter implements BashOperations {
   readonly #fs: IFileSystem;
   readonly #root: string;
+  readonly #customCommands: readonly Command[];
 
   constructor(options: BashAdapterOptions) {
     this.#fs = options.fs;
     this.#root = options.root;
+    this.#customCommands = options.customCommands ?? [];
   }
 
   async exec(
@@ -52,6 +61,9 @@ export class BashAdapter implements BashOperations {
       fs: this.#fs,
       cwd: virtualCwd,
       ...(env !== undefined ? { env } : {}),
+      ...(this.#customCommands.length > 0
+        ? { customCommands: [...this.#customCommands] }
+        : {}),
     });
 
     const controller = new AbortController();
