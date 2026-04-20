@@ -19,7 +19,13 @@ export function registerSandboxTools(api, options) {
         root,
         ...(options.maxFileReadSize !== undefined ? { maxFileReadSize: options.maxFileReadSize } : {}),
     });
-    const bash = new BashAdapter({ fs, root });
+    const bash = new BashAdapter({
+        fs,
+        root,
+        ...(options.hostBinaryBridges !== undefined
+            ? { customCommands: options.hostBinaryBridges }
+            : {}),
+    });
     const read = new ReadAdapter({ fs, root });
     const write = new WriteAdapter({ fs, root });
     const edit = new EditAdapter({ fs, root });

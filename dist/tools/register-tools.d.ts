@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { Command } from "just-bash";
 import type { SandboxSession } from "../session/sandbox-session.js";
 import type { ToolFactories } from "./tool-factories.js";
 /**
@@ -18,6 +19,12 @@ export interface RegisterSandboxToolsOptions {
      * `@mariozechner/pi-coding-agent` and is erased at runtime.
      */
     readonly factories: ToolFactories;
+    /**
+     * just-bash command definitions bridging host binaries (e.g. `storm`,
+     * `carrier-lint`) into the sandboxed shell. When present, every
+     * BashAdapter invocation exposes these names inside its virtual shell.
+     */
+    readonly hostBinaryBridges?: readonly Command[];
 }
 /**
  * Register the sandboxed replacements for the built-in pi-mono tools
