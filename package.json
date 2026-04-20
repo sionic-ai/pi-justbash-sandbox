@@ -65,6 +65,6 @@
     "bash"
   ],
   "pi": {
-    "extensions": ["./dist/index.js"]
+    "extensions": ["./dist/entry-pi.js", "./dist/entry-senpi.js"]
   }
 }

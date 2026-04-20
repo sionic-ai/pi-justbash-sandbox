@@ -1,6 +1,12 @@
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SandboxSession } from "../../src/session/sandbox-session.js";
 import { registerSandboxTools } from "../../src/tools/register-tools.js";
@@ -18,6 +24,13 @@ function createFakeApi() {
   };
   return { api, registered };
 }
+
+const factories = {
+  createBashToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
+  createEditToolDefinition,
+};
 
 describe("registerSandboxTools", () => {
   let baseDir: string;
@@ -38,7 +51,7 @@ describe("registerSandboxTools", () => {
 
     // when
     // biome-ignore lint/suspicious/noExplicitAny: narrow fake API for test only.
-    registerSandboxTools(api as any, { session });
+    registerSandboxTools(api as any, { session, factories });
 
     // then
     const names = registered.map((t) => t.name).sort();
@@ -53,7 +66,7 @@ describe("registerSandboxTools", () => {
 
     // when
     // biome-ignore lint/suspicious/noExplicitAny: narrow fake API for test only.
-    registerSandboxTools(api as any, { session });
+    registerSandboxTools(api as any, { session, factories });
 
     // then — every registered tool definition points at the sandbox root
     expect(registered.length).toBe(4);
