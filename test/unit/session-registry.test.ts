@@ -66,15 +66,15 @@ describe("SandboxSessionRegistry", () => {
   it("releaseAll() cleans every tracked session and empties the map", async () => {
     // given
     const registry = new SandboxSessionRegistry({ baseDir });
-    const a = await registry.acquire("ses-1");
-    const b = await registry.acquire("ses-2");
+    const rootA = (await registry.acquire("ses-1")).getRoot();
+    const rootB = (await registry.acquire("ses-2")).getRoot();
 
     // when
     await registry.releaseAll();
 
     // then
-    expect(existsSync(a.getRoot())).toBe(false);
-    expect(existsSync(b.getRoot())).toBe(false);
+    expect(existsSync(rootA)).toBe(false);
+    expect(existsSync(rootB)).toBe(false);
     expect(registry.size()).toBe(0);
   });
 });
