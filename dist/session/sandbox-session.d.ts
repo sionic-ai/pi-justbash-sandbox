@@ -15,6 +15,14 @@ export interface SandboxSessionOptions {
      * deterministic paths. Production code should omit this.
      */
     readonly suffix?: string;
+    /**
+     * When `true`, use `baseDir` directly as the session root instead of
+     * creating a per-session `sess-<id>-<hex>` subdirectory. Useful when
+     * the caller wants tools to write directly into the workspace (e.g.
+     * `/workspace`) without isolation overhead. Cleanup becomes a no-op
+     * because we do not own the shared directory.
+     */
+    readonly flat?: boolean;
 }
 /**
  * One sandbox per pi session. Owns a lazily-created root directory under
@@ -28,6 +36,9 @@ export declare class SandboxSession {
     /**
      * Create the sandbox root if it does not exist yet. Idempotent: repeated
      * calls return the same absolute path for the lifetime of the instance.
+     *
+     * In flat mode the root **is** `baseDir` itself — we ensure the
+     * directory exists but never create a per-session subdirectory.
      */
     ensure(): Promise<string>;
     /**
@@ -39,6 +50,9 @@ export declare class SandboxSession {
      * Delete the sandbox root, if one exists. Best-effort: if the directory
      * was already removed out-of-band we silently succeed. Concurrent callers
      * share a single in-flight cleanup promise so we never double-rm.
+     *
+     * In flat mode this is intentionally a no-op: we do not own the shared
+     * directory and must not remove it.
      */
     cleanup(): Promise<void>;
 }

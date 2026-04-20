@@ -26,6 +26,7 @@ export class SandboxSession {
     #baseDir;
     #sessionId;
     #suffix;
+    #flat;
     #root;
     #cleanupInFlight;
     constructor(options) {
@@ -33,16 +34,22 @@ export class SandboxSession {
         this.#baseDir = options.baseDir;
         this.#sessionId = options.sessionId;
         this.#suffix = options.suffix ?? hexSuffix();
+        this.#flat = options.flat === true;
     }
     /**
      * Create the sandbox root if it does not exist yet. Idempotent: repeated
      * calls return the same absolute path for the lifetime of the instance.
+     *
+     * In flat mode the root **is** `baseDir` itself — we ensure the
+     * directory exists but never create a per-session subdirectory.
      */
     async ensure() {
         if (this.#root !== undefined) {
             return this.#root;
         }
-        const root = path.join(this.#baseDir, `sess-${this.#sessionId}-${this.#suffix}`);
+        const root = this.#flat
+            ? this.#baseDir
+            : path.join(this.#baseDir, `sess-${this.#sessionId}-${this.#suffix}`);
         await mkdir(root, { recursive: true, mode: 0o700 });
         this.#root = root;
         return root;
@@ -61,8 +68,14 @@ export class SandboxSession {
      * Delete the sandbox root, if one exists. Best-effort: if the directory
      * was already removed out-of-band we silently succeed. Concurrent callers
      * share a single in-flight cleanup promise so we never double-rm.
+     *
+     * In flat mode this is intentionally a no-op: we do not own the shared
+     * directory and must not remove it.
      */
     async cleanup() {
+        if (this.#flat) {
+            return;
+        }
         if (this.#cleanupInFlight !== undefined) {
             return this.#cleanupInFlight;
         }

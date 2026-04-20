@@ -5,6 +5,12 @@ import { SandboxSession } from "./sandbox-session.js";
 export interface SandboxSessionRegistryOptions {
     /** Base directory shared by every {@link SandboxSession} in this registry. */
     readonly baseDir: string;
+    /**
+     * When `true`, every acquired session uses `baseDir` directly as its
+     * root instead of creating a per-session `sess-<id>-<hex>` subdirectory.
+     * This lets tools write directly into the workspace (e.g. `/workspace`).
+     */
+    readonly flat?: boolean;
 }
 /**
  * Maps a pi-mono session id to the {@link SandboxSession} that owns its
