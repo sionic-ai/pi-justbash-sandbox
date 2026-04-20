@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHostBinaryBridges } from "./adapters/host-binary-bridge.js";
 import { installSandboxLifecycle } from "./lifecycle/install-lifecycle.js";
 import { reapOrphans } from "./session/orphan-reaper.js";
 import { SandboxSessionRegistry } from "./session/session-registry.js";
@@ -8,6 +9,7 @@ import { registerSandboxTools } from "./tools/register-tools.js";
 const FLAG_SANDBOX_ROOT = "sandbox-root";
 const FLAG_SANDBOX_FLAT = "sandbox-flat";
 const FLAG_MAX_FILE_SIZE_MB = "sandbox-max-file-size-mb";
+const FLAG_HOST_BINARIES = "sandbox-host-binaries";
 const DEFAULT_BASE_DIR = path.join(tmpdir(), "pi-justbash");
 const ORPHAN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 /**
@@ -50,6 +52,29 @@ function resolveMaxFileReadSize(api) {
     return mb * 1024 * 1024;
 }
 /**
+ * Read the whitelist of host binaries to bridge into just-bash. The
+ * whitelist can come from `--sandbox-host-binaries` (comma-separated)
+ * or from the `SANDBOX_HOST_BINARIES` env var. Callers opt in per
+ * deployment; the extension ships without any default bridges.
+ */
+function resolveHostBinaryBridges(api) {
+    const flag = api.getFlag(FLAG_HOST_BINARIES);
+    const raw = typeof flag === "string" && flag.length > 0
+        ? flag
+        : process.env["SANDBOX_HOST_BINARIES"];
+    if (raw === undefined || raw.length === 0) {
+        return [];
+    }
+    const names = raw
+        .split(",")
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
+    if (names.length === 0) {
+        return [];
+    }
+    return createHostBinaryBridges({ names });
+}
+/**
  * Build a pi-mono `ExtensionFactory` bound to a specific host's tool
  * factories.  Entry files (`entry-pi.ts`, `entry-senpi.ts`) statically
  * import `create{Bash,Read,Write,Edit}ToolDefinition` from **their** host
@@ -83,9 +108,14 @@ export function createExtensionFactory(factories) {
             type: "string",
             description: "Override the maximum file read size (MiB) for the sandbox fs.",
         });
+        api.registerFlag(FLAG_HOST_BINARIES, {
+            type: "string",
+            description: "Comma-separated list of host binaries (e.g. `storm,carrier-lint`) to expose inside the sandboxed bash tool.",
+        });
         const baseDir = resolveBaseDir(api);
         const flat = resolveFlat(api);
         const maxFileReadSize = resolveMaxFileReadSize(api);
+        const hostBinaryBridges = resolveHostBinaryBridges(api);
         // Best-effort startup sweep — skip when flat mode is active because
         // there are no per-session subdirectories to reap.
         if (!flat) {
@@ -104,6 +134,7 @@ export function createExtensionFactory(factories) {
                 session,
                 factories,
                 ...(maxFileReadSize !== undefined ? { maxFileReadSize } : {}),
+                ...(hostBinaryBridges.length > 0 ? { hostBinaryBridges } : {}),
             });
         });
         installSignalHandlers(() => lifecycle.reapAllSessions());

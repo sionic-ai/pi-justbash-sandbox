@@ -9,9 +9,11 @@ import { toVirtualPath } from "../fs/sandbox-paths.js";
 export class BashAdapter {
     #fs;
     #root;
+    #customCommands;
     constructor(options) {
         this.#fs = options.fs;
         this.#root = options.root;
+        this.#customCommands = options.customCommands ?? [];
     }
     async exec(command, cwd, options) {
         let virtualCwd;
@@ -27,6 +29,9 @@ export class BashAdapter {
             fs: this.#fs,
             cwd: virtualCwd,
             ...(env !== undefined ? { env } : {}),
+            ...(this.#customCommands.length > 0
+                ? { customCommands: [...this.#customCommands] }
+                : {}),
         });
         const controller = new AbortController();
         const externalAbort = () => controller.abort(options.signal?.reason);

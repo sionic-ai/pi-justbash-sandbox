@@ -1,5 +1,5 @@
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
-import { type IFileSystem } from "just-bash";
+import { type Command, type IFileSystem } from "just-bash";
 /**
  * Construction parameters for {@link BashAdapter}.
  */
@@ -8,6 +8,13 @@ export interface BashAdapterOptions {
     readonly fs: IFileSystem;
     /** Host-absolute sandbox root (used to translate host cwds to virtual paths). */
     readonly root: string;
+    /**
+     * Extra just-bash command definitions to register on every shell
+     * instance. Callers use this to expose host binaries (e.g. `storm`,
+     * `carrier-lint`) into the sandboxed shell; see
+     * {@link ../adapters/host-binary-bridge.ts}.
+     */
+    readonly customCommands?: readonly Command[];
 }
 /**
  * pi-mono {@link BashOperations} implementation that runs every command
