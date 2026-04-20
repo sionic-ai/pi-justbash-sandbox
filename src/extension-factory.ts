@@ -15,25 +15,42 @@ const FLAG_MAX_FILE_SIZE_MB = "sandbox-max-file-size-mb";
 const DEFAULT_BASE_DIR = path.join(tmpdir(), "pi-justbash");
 const ORPHAN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
+/**
+ * Resolve a configuration value from pi's flag API first, then fall back
+ * to environment variables. This dual lookup is necessary because pi's
+ * `getFlag()` returns `undefined` in print mode (`-p`) even when the
+ * flag was passed on the CLI — a known quirk of pi v0.67.x.
+ */
 function resolveBaseDir(api: ExtensionAPI): string {
   const flag = api.getFlag(FLAG_SANDBOX_ROOT);
   if (typeof flag === "string" && flag.length > 0) {
     return flag;
+  }
+  const env = process.env["SANDBOX_ROOT"];
+  if (env !== undefined && env.length > 0) {
+    return env;
   }
   return DEFAULT_BASE_DIR;
 }
 
 function resolveFlat(api: ExtensionAPI): boolean {
   const flag = api.getFlag(FLAG_SANDBOX_FLAT);
-  return flag === "true" || flag === true;
+  if (flag === "true" || flag === true) {
+    return true;
+  }
+  const env = process.env["SANDBOX_FLAT"];
+  return env === "true" || env === "1";
 }
 
 function resolveMaxFileReadSize(api: ExtensionAPI): number | undefined {
   const flag = api.getFlag(FLAG_MAX_FILE_SIZE_MB);
-  if (typeof flag !== "string" || flag.length === 0) {
+  const raw = typeof flag === "string" && flag.length > 0
+    ? flag
+    : process.env["SANDBOX_MAX_FILE_SIZE_MB"];
+  if (raw === undefined || raw.length === 0) {
     return undefined;
   }
-  const mb = Number.parseInt(flag, 10);
+  const mb = Number.parseInt(raw, 10);
   if (!Number.isFinite(mb) || mb <= 0) {
     return undefined;
   }
