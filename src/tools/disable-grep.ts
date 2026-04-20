@@ -18,7 +18,7 @@ const grepReplacementSchema = Type.Object({
   literal: Type.Optional(Type.Boolean()),
   context: Type.Optional(Type.Number()),
   limit: Type.Optional(Type.Number()),
-});
+}) as const;
 
 /**
  * Build a stub `grep` {@link ToolDefinition} that short-circuits with
@@ -26,17 +26,19 @@ const grepReplacementSchema = Type.Object({
  * pi-mono's built-in grep because pi's tool map uses first-registration-
  * wins semantics per tool name.
  */
-export function buildDisableGrepTool(): ToolDefinition<typeof grepReplacementSchema> {
+export function buildDisableGrepTool(): ToolDefinition {
+  // biome-ignore lint/suspicious/noExplicitAny: typebox schema constraint.
+  const schema = grepReplacementSchema as any;
   return {
     name: "grep",
     label: "grep (disabled)",
     description:
       "grep is disabled inside pi-justbash-sandbox. Shell out via `bash grep ...` to search within the sandbox.",
-    parameters: grepReplacementSchema,
+    parameters: schema,
     async execute(): Promise<AgentToolResult<unknown>> {
       throw new Error(DISABLED_MESSAGE);
     },
-  };
+  } as ToolDefinition;
 }
 
 /**
