@@ -1,0 +1,43 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/
+
+# Coverage
+coverage/
+*.lcov
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+.vscode/
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Bun
+bun.lockb
+bun.lock
+
+# Temp / caches
+.tmp/
+.cache/
+
+# pi-justbash sandbox roots (defensive — they should live in os.tmpdir())
+.pi-justbash-sandbox/
