@@ -28,36 +28,83 @@ for the phase-by-phase implementation roadmap.
 
 ## Install
 
-```sh
-pnpm add -D @sionic-ai/pi-justbash-sandbox
-# or
-bun add -d @sionic-ai/pi-justbash-sandbox
+This package is **not published to npm**. Install it from GitHub, a
+local clone, or a pinned git ref — pi-mono supports all three natively.
+The package ships its built factory under `dist/`, so consumers only
+need to point pi at the repository; no intermediate npm registry is
+ever involved.
+
+Prerequisites:
+
+- `pi` (aka `@mariozechner/pi-coding-agent`) **>= 0.67.68** installed
+  and on your `PATH`. See [badlogic/pi-mono](https://github.com/badlogic/pi-mono)
+  for install instructions. pi supplies `@mariozechner/pi-coding-agent`,
+  `@mariozechner/pi-agent-core`, and `@sinclair/typebox` at runtime, so
+  consumers do not need to install those separately.
+
+### Option A — Install via `pi install`
+
+pi-mono's package manager speaks git and local paths directly. Each
+form below pulls the repo, runs `npm install` in it (for `just-bash`),
+builds nothing itself — this repo already commits `dist/` on releases
+(see [Release flow](#release-flow)) — and loads the extension.
+
+```bash
+# Pinned git tag or branch (recommended)
+pi install git:github.com/sionic-ai/pi-justbash-sandbox@main
+
+# SSH
+pi install git:git@github.com:sionic-ai/pi-justbash-sandbox
+
+# Raw URL also works
+pi install https://github.com/sionic-ai/pi-justbash-sandbox
+
+# Local clone (absolute or relative path)
+pi install /absolute/path/to/pi-justbash-sandbox
+pi install ./pi-justbash-sandbox
 ```
 
-The package declares `@mariozechner/pi-coding-agent@>=0.67.68` as a peer
-dependency; your project must install a compatible version of pi.
+To try it without persisting to settings:
 
-## Use with pi
+```bash
+pi -e git:github.com/sionic-ai/pi-justbash-sandbox
+pi -e /absolute/path/to/pi-justbash-sandbox
+```
 
-Add the extension to your `pi` project:
+### Option B — Declare it in `.pi/settings.json`
 
 ```jsonc
 // .pi/settings.json
 {
-  "packages": ["npm:@sionic-ai/pi-justbash-sandbox@^0.0.0"]
+  "packages": [
+    "git:github.com/sionic-ai/pi-justbash-sandbox@main"
+  ]
 }
 ```
 
-…or register it inline when embedding pi via the SDK:
+pi auto-installs missing packages on startup, so this file alone is
+enough for collaborators to pick up the sandbox on their next `pi` run.
+Use `.pi/settings.json` for project-scoped installs and
+`~/.pi/agent/settings.json` for global installs.
+
+### Option C — Inline factory (embedding pi via the SDK)
+
+When you embed pi inside your own Node or Bun program, import the
+default factory directly from the cloned repo (no registry lookup):
 
 ```ts
 import { DefaultResourceLoader } from "@mariozechner/pi-coding-agent";
-import justbashSandbox from "@sionic-ai/pi-justbash-sandbox";
+import justbashSandbox from "./vendor/pi-justbash-sandbox/dist/index.js";
 
 const resourceLoader = new DefaultResourceLoader({
   extensionFactories: [justbashSandbox],
 });
 ```
+
+Any path resolvable by Node / Bun ESM works here — a git submodule, a
+vendored subtree, a workspace package, a `file:` spec in `package.json`,
+etc. The only hard dependency on the filesystem side is that `dist/`
+has been built (`pnpm build` / `bun run build`).
 
 Once loaded, the extension takes over the host-touching tools as soon as pi
 emits `session_start`; from there every `bash` / `read` / `write` / `edit`
@@ -108,6 +155,32 @@ pnpm build         # or: bun run build
 
 Both `pnpm` and `bun` are first-class; CI runs the full matrix on each
 push against Ubuntu and macOS.
+
+## Release flow
+
+This package is **not** distributed through npm (`package.json` sets
+`"private": true` and a `prepublishOnly` guard blocks accidental
+`npm publish`). Releases are plain git tags and the compiled `dist/`
+output is checked into the repository on tag boundaries so that
+`pi install git:...@<tag>` works without a separate build step on the
+consumer's side.
+
+To cut a release locally:
+
+```sh
+pnpm install
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+git add dist
+git commit -m "build(dist): release vX.Y.Z"
+git tag vX.Y.Z
+git push --follow-tags
+```
+
+Consumers then pin the tag:
+
+```bash
+pi install git:github.com/sionic-ai/pi-justbash-sandbox@vX.Y.Z
+```
 
 ## License
 
