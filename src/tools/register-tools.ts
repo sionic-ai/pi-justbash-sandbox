@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { Command } from "just-bash";
 import { BashAdapter } from "../adapters/bash-adapter.js";
 import { EditAdapter } from "../adapters/edit-adapter.js";
 import { ReadAdapter } from "../adapters/read-adapter.js";
@@ -24,6 +25,12 @@ export interface RegisterSandboxToolsOptions {
    * `@mariozechner/pi-coding-agent` and is erased at runtime.
    */
   readonly factories: ToolFactories;
+  /**
+   * just-bash command definitions bridging host binaries (e.g. `storm`,
+   * `carrier-lint`) into the sandboxed shell. When present, every
+   * BashAdapter invocation exposes these names inside its virtual shell.
+   */
+  readonly hostBinaryBridges?: readonly Command[];
 }
 
 /**
@@ -46,7 +53,13 @@ export function registerSandboxTools(
     ...(options.maxFileReadSize !== undefined ? { maxFileReadSize: options.maxFileReadSize } : {}),
   });
 
-  const bash = new BashAdapter({ fs, root });
+  const bash = new BashAdapter({
+    fs,
+    root,
+    ...(options.hostBinaryBridges !== undefined
+      ? { customCommands: options.hostBinaryBridges }
+      : {}),
+  });
   const read = new ReadAdapter({ fs, root });
   const write = new WriteAdapter({ fs, root });
   const edit = new EditAdapter({ fs, root });
