@@ -1,5 +1,9 @@
 # Build output
-dist/
+# dist/ is intentionally NOT gitignored: this package is distributed via
+# git (see README.md Release flow) and pi install expects dist/index.js
+# to be present in the repository so it can load the factory without a
+# local build step.
+# dist/
 *.tsbuildinfo
 
 # Dependencies
