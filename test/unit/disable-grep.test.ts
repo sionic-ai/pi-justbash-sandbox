@@ -13,30 +13,26 @@ describe("buildDisableGrepTool", () => {
     expect(name).toBe("grep");
   });
 
-  it("execute() returns an error result with a sandbox notice", async () => {
+  it("execute() throws a sandbox notice so pi's runtime marks it as an error", async () => {
     // given
     const tool = buildDisableGrepTool();
 
-    // when
-    const result = await tool.execute(
-      "call-1",
-      { pattern: "whatever", path: "." },
-      undefined,
-      undefined,
-      // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionContext.
-      {} as any,
-    );
-
-    // then
-    expect(result.isError).toBe(true);
-    const flat = JSON.stringify(result);
-    expect(flat).toMatch(/grep/i);
-    expect(flat).toMatch(/sandbox/i);
+    // when / then
+    await expect(
+      tool.execute(
+        "call-1",
+        { pattern: "whatever", path: "." },
+        undefined,
+        undefined,
+        // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionContext.
+        {} as any,
+      ),
+    ).rejects.toThrow(/grep.*sandbox|sandbox.*grep/i);
   });
 });
 
 describe("buildGrepToolCallBlocker", () => {
-  it("blocks grep tool_call events with a reason", () => {
+  it("blocks grep tool_call events with a reason", async () => {
     // given
     const blocker = buildGrepToolCallBlocker();
     const event = {
@@ -48,7 +44,7 @@ describe("buildGrepToolCallBlocker", () => {
 
     // when
     // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionContext.
-    const result = blocker(event as any, {} as any);
+    const result = await blocker(event as any, {} as any);
 
     // then
     expect(result).toBeDefined();
@@ -57,7 +53,7 @@ describe("buildGrepToolCallBlocker", () => {
     expect(result?.reason).toMatch(/sandbox/i);
   });
 
-  it("passes through non-grep tool_call events (returns undefined)", () => {
+  it("passes through non-grep tool_call events (returns undefined)", async () => {
     // given
     const blocker = buildGrepToolCallBlocker();
     const event = {
@@ -69,7 +65,7 @@ describe("buildGrepToolCallBlocker", () => {
 
     // when
     // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionContext.
-    const result = blocker(event as any, {} as any);
+    const result = await blocker(event as any, {} as any);
 
     // then
     expect(result).toBeUndefined();
