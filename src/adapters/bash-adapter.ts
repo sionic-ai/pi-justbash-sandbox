@@ -54,19 +54,54 @@ export class BashAdapter implements BashOperations {
       ...(env !== undefined ? { env } : {}),
     });
 
-    const execOptions: Record<string, unknown> = {};
+    const controller = new AbortController();
+    const externalAbort = () => controller.abort(options.signal?.reason);
     if (options.signal !== undefined) {
-      execOptions.signal = options.signal;
+      if (options.signal.aborted) {
+        controller.abort(options.signal.reason);
+      } else {
+        options.signal.addEventListener("abort", externalAbort, { once: true });
+      }
     }
-    const result = await bash.exec(command, execOptions);
 
-    if (result.stdout.length > 0) {
-      options.onData(Buffer.from(result.stdout, "utf8"));
+    let timeoutFired = false;
+    const timeoutHandle =
+      options.timeout !== undefined && options.timeout > 0
+        ? setTimeout(() => {
+            timeoutFired = true;
+            controller.abort(
+              new Error(`pi-justbash-sandbox: command timed out after ${options.timeout}ms`),
+            );
+          }, options.timeout)
+        : undefined;
+
+    try {
+      const result = await bash.exec(command, { signal: controller.signal });
+
+      if (result.stdout.length > 0) {
+        options.onData(Buffer.from(result.stdout, "utf8"));
+      }
+      if (result.stderr.length > 0) {
+        options.onData(Buffer.from(result.stderr, "utf8"));
+      }
+
+      if (controller.signal.aborted) {
+        if (timeoutFired) {
+          options.onData(
+            Buffer.from(`pi-justbash-sandbox: command timed out after ${options.timeout}ms\n`),
+          );
+          return { exitCode: 124 };
+        }
+        return { exitCode: 130 };
+      }
+
+      return { exitCode: result.exitCode };
+    } finally {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+      options.signal?.removeEventListener("abort", externalAbort);
     }
-    if (result.stderr.length > 0) {
-      options.onData(Buffer.from(result.stderr, "utf8"));
-    }
-    return { exitCode: result.exitCode };
   }
 }
 
