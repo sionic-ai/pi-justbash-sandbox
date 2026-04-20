@@ -8,7 +8,11 @@ import path from "node:path";
 export interface SandboxSessionOptions {
   /** Absolute base directory that owns every sandbox root. */
   readonly baseDir: string;
-  /** pi-mono session id — appears as-is in the sandbox directory name. */
+  /**
+   * pi-mono session id — appears as-is in the sandbox directory name.
+   * Must be a non-empty single path segment; path separators and relative
+   * traversal (`..`) are rejected to prevent sandbox-escape.
+   */
   readonly sessionId: string;
   /**
    * Override the random suffix (hex). Intended only for tests that need
@@ -23,6 +27,22 @@ function hexSuffix(): string {
   return randomBytes(SUFFIX_BYTES).toString("hex");
 }
 
+function assertValidSessionId(sessionId: string): void {
+  if (sessionId.length === 0) {
+    throw new Error("SandboxSession: sessionId must be non-empty");
+  }
+  if (sessionId.includes("/") || sessionId.includes("\\")) {
+    throw new Error(
+      `SandboxSession: sessionId must not contain path separators (got ${JSON.stringify(sessionId)})`,
+    );
+  }
+  if (sessionId === "." || sessionId === ".." || sessionId.includes("\0")) {
+    throw new Error(
+      `SandboxSession: sessionId must not be a relative traversal (got ${JSON.stringify(sessionId)})`,
+    );
+  }
+}
+
 /**
  * One sandbox per pi session. Owns a lazily-created root directory under
  * `baseDir` and knows how to tear it down. The root is guaranteed to be
@@ -34,8 +54,10 @@ export class SandboxSession {
   readonly #sessionId: string;
   readonly #suffix: string;
   #root: string | undefined;
+  #cleanupInFlight: Promise<void> | undefined;
 
   constructor(options: SandboxSessionOptions) {
+    assertValidSessionId(options.sessionId);
     this.#baseDir = options.baseDir;
     this.#sessionId = options.sessionId;
     this.#suffix = options.suffix ?? hexSuffix();
@@ -68,15 +90,25 @@ export class SandboxSession {
 
   /**
    * Delete the sandbox root, if one exists. Best-effort: if the directory
-   * was already removed out-of-band we silently succeed. After cleanup the
-   * session goes back to the pre-ensure state and can be re-ensured.
+   * was already removed out-of-band we silently succeed. Concurrent callers
+   * share a single in-flight cleanup promise so we never double-rm.
    */
   async cleanup(): Promise<void> {
+    if (this.#cleanupInFlight !== undefined) {
+      return this.#cleanupInFlight;
+    }
     const root = this.#root;
     if (root === undefined) {
       return;
     }
-    await rm(root, { recursive: true, force: true, maxRetries: 3 });
-    this.#root = undefined;
+    this.#cleanupInFlight = (async () => {
+      try {
+        await rm(root, { recursive: true, force: true, maxRetries: 3 });
+      } finally {
+        this.#root = undefined;
+        this.#cleanupInFlight = undefined;
+      }
+    })();
+    return this.#cleanupInFlight;
   }
 }
