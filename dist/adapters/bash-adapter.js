@@ -29,9 +29,7 @@ export class BashAdapter {
             fs: this.#fs,
             cwd: virtualCwd,
             ...(env !== undefined ? { env } : {}),
-            ...(this.#customCommands.length > 0
-                ? { customCommands: [...this.#customCommands] }
-                : {}),
+            ...(this.#customCommands.length > 0 ? { customCommands: [...this.#customCommands] } : {}),
         });
         const controller = new AbortController();
         const externalAbort = () => controller.abort(options.signal?.reason);

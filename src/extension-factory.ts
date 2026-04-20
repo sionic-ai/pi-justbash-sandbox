@@ -47,9 +47,8 @@ function resolveFlat(api: ExtensionAPI): boolean {
 
 function resolveMaxFileReadSize(api: ExtensionAPI): number | undefined {
   const flag = api.getFlag(FLAG_MAX_FILE_SIZE_MB);
-  const raw = typeof flag === "string" && flag.length > 0
-    ? flag
-    : process.env["SANDBOX_MAX_FILE_SIZE_MB"];
+  const raw =
+    typeof flag === "string" && flag.length > 0 ? flag : process.env["SANDBOX_MAX_FILE_SIZE_MB"];
   if (raw === undefined || raw.length === 0) {
     return undefined;
   }
@@ -68,9 +67,8 @@ function resolveMaxFileReadSize(api: ExtensionAPI): number | undefined {
  */
 function resolveHostBinaryBridges(api: ExtensionAPI): Command[] {
   const flag = api.getFlag(FLAG_HOST_BINARIES);
-  const raw = typeof flag === "string" && flag.length > 0
-    ? flag
-    : process.env["SANDBOX_HOST_BINARIES"];
+  const raw =
+    typeof flag === "string" && flag.length > 0 ? flag : process.env["SANDBOX_HOST_BINARIES"];
   if (raw === undefined || raw.length === 0) {
     return [];
   }

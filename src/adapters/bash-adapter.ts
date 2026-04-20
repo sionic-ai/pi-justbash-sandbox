@@ -61,9 +61,7 @@ export class BashAdapter implements BashOperations {
       fs: this.#fs,
       cwd: virtualCwd,
       ...(env !== undefined ? { env } : {}),
-      ...(this.#customCommands.length > 0
-        ? { customCommands: [...this.#customCommands] }
-        : {}),
+      ...(this.#customCommands.length > 0 ? { customCommands: [...this.#customCommands] } : {}),
     });
 
     const controller = new AbortController();
