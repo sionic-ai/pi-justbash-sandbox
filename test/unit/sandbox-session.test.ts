@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -74,5 +74,80 @@ describe("SandboxSession.ensure", () => {
 
     // when / then
     expect(() => session.getRoot()).toThrow(/not ensured/i);
+  });
+});
+
+describe("SandboxSession.ensure (flat mode)", () => {
+  let baseDir: string;
+
+  beforeEach(() => {
+    baseDir = realpathSync(mkdtempSync(path.join(tmpdir(), "pi-justbash-test-")));
+  });
+
+  afterEach(() => {
+    rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  it("uses baseDir directly as root instead of creating a subdirectory", async () => {
+    // given
+    const session = new SandboxSession({ baseDir, sessionId: "flat-1", flat: true });
+
+    // when
+    const root = await session.ensure();
+
+    // then
+    expect(root).toBe(baseDir);
+    expect(statSync(root).isDirectory()).toBe(true);
+  });
+
+  it("is idempotent: repeated ensure() returns the same baseDir", async () => {
+    // given
+    const session = new SandboxSession({ baseDir, sessionId: "flat-idem", flat: true });
+    const first = await session.ensure();
+
+    // when
+    const second = await session.ensure();
+
+    // then
+    expect(second).toBe(first);
+    expect(second).toBe(baseDir);
+  });
+
+  it("multiple sessions with different ids share the same root in flat mode", async () => {
+    // given
+    const a = new SandboxSession({ baseDir, sessionId: "flat-A", flat: true });
+    const b = new SandboxSession({ baseDir, sessionId: "flat-B", flat: true });
+
+    // when
+    const rootA = await a.ensure();
+    const rootB = await b.ensure();
+
+    // then
+    expect(rootA).toBe(rootB);
+    expect(rootA).toBe(baseDir);
+  });
+
+  it("cleanup is a no-op in flat mode — baseDir survives", async () => {
+    // given
+    const session = new SandboxSession({ baseDir, sessionId: "flat-clean", flat: true });
+    await session.ensure();
+
+    // when
+    await session.cleanup();
+
+    // then
+    expect(existsSync(baseDir)).toBe(true);
+  });
+
+  it("getRoot() still works after cleanup in flat mode", async () => {
+    // given
+    const session = new SandboxSession({ baseDir, sessionId: "flat-root", flat: true });
+    await session.ensure();
+
+    // when
+    await session.cleanup();
+
+    // then — root remains accessible since cleanup is a no-op
+    expect(session.getRoot()).toBe(baseDir);
   });
 });

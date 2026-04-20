@@ -6,6 +6,7 @@ import { SandboxSessionRegistry } from "./session/session-registry.js";
 import { buildDisableGrepTool, buildGrepToolCallBlocker } from "./tools/disable-grep.js";
 import { registerSandboxTools } from "./tools/register-tools.js";
 const FLAG_SANDBOX_ROOT = "sandbox-root";
+const FLAG_SANDBOX_FLAT = "sandbox-flat";
 const FLAG_MAX_FILE_SIZE_MB = "sandbox-max-file-size-mb";
 const DEFAULT_BASE_DIR = path.join(tmpdir(), "pi-justbash");
 const ORPHAN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -15,6 +16,10 @@ function resolveBaseDir(api) {
         return flag;
     }
     return DEFAULT_BASE_DIR;
+}
+function resolveFlat(api) {
+    const flag = api.getFlag(FLAG_SANDBOX_FLAT);
+    return flag === "true" || flag === true;
 }
 function resolveMaxFileReadSize(api) {
     const flag = api.getFlag(FLAG_MAX_FILE_SIZE_MB);
@@ -53,20 +58,27 @@ export function createExtensionFactory(factories) {
             type: "string",
             description: "Base directory under which per-session sandbox roots are created. Defaults to $TMPDIR/pi-justbash.",
         });
+        api.registerFlag(FLAG_SANDBOX_FLAT, {
+            type: "string",
+            description: 'When "true", use the sandbox root directory directly instead of creating per-session subdirectories.',
+        });
         api.registerFlag(FLAG_MAX_FILE_SIZE_MB, {
             type: "string",
             description: "Override the maximum file read size (MiB) for the sandbox fs.",
         });
         const baseDir = resolveBaseDir(api);
+        const flat = resolveFlat(api);
         const maxFileReadSize = resolveMaxFileReadSize(api);
-        // Best-effort startup sweep. Swallow errors so a locked/missing dir
-        // cannot prevent the extension from loading.
-        reapOrphans({ baseDir, ttlMs: ORPHAN_TTL_MS }).catch(() => { });
+        // Best-effort startup sweep — skip when flat mode is active because
+        // there are no per-session subdirectories to reap.
+        if (!flat) {
+            reapOrphans({ baseDir, ttlMs: ORPHAN_TTL_MS }).catch(() => { });
+        }
         // Stage 1 of the grep defense-in-depth: shadow the built-in grep tool.
         api.registerTool(buildDisableGrepTool());
         // Stage 2: block any lingering grep invocations at the tool_call gate.
         api.on("tool_call", buildGrepToolCallBlocker());
-        const registry = new SandboxSessionRegistry({ baseDir });
+        const registry = new SandboxSessionRegistry({ baseDir, flat });
         const lifecycle = installSandboxLifecycle(api, { registry });
         api.on("session_start", async (_event, ctx) => {
             const sessionId = ctx.sessionManager.getSessionId();

@@ -8,9 +8,11 @@ import { SandboxSession } from "./sandbox-session.js";
  */
 export class SandboxSessionRegistry {
     #baseDir;
+    #flat;
     #sessions = new Map();
     constructor(options) {
         this.#baseDir = options.baseDir;
+        this.#flat = options.flat === true;
     }
     /**
      * Return the {@link SandboxSession} for `sessionId`, constructing and
@@ -23,7 +25,7 @@ export class SandboxSessionRegistry {
         if (cached !== undefined) {
             return cached;
         }
-        const session = new SandboxSession({ baseDir: this.#baseDir, sessionId });
+        const session = new SandboxSession({ baseDir: this.#baseDir, sessionId, flat: this.#flat });
         await session.ensure();
         this.#sessions.set(sessionId, session);
         return session;
