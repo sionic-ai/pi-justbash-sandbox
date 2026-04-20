@@ -4,6 +4,7 @@
     "includes": [
       "**/src/**/*.ts",
       "**/test/**/*.ts",
+      "**/examples/**/*.ts",
       "**/vitest.config.ts",
       "!**/node_modules",
       "!**/dist",
