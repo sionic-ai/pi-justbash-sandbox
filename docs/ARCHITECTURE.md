@@ -149,3 +149,62 @@ cannot block the extension from loading.
 - Network allow-list policy — the extension does not currently plumb
   `just-bash`'s `NetworkConfig`, so `Bash` runs with network disabled by
   default. A future `--sandbox-allow-network` flag will re-enable it.
+
+## Multi-Host Compatibility & senpi Limitations
+
+### Current Status: pi Only
+
+The extension is currently deployed for `@mariozechner/pi-coding-agent` only
+(the canonical pi-mono host). senpi (`@code-yeongyu/senpi`, a fork) is not yet
+supported in a single package due to pi-mono's extension loader design.
+
+### Why senpi Is Blocked
+
+**pi-mono's extension loader behavior** (as of v0.67.68+):
+- Reads `package.json#pi.extensions` array
+- Attempts to load each extension in sequence
+- On load failure, **adds entry to diagnostics with `type: "error"`**
+- If **any** diagnostic has `type: "error"`, the entire process exits with code 1
+
+This fail-fast design is appropriate for mandatory extensions but prevents
+graceful fallback for optional multi-host scenarios.
+
+**Static Import Limitation:**
+- jiti (the module loader used by pi-mono) intercepts static imports via
+  `VIRTUAL_MODULES` aliases
+- Dynamic imports bypass `VIRTUAL_MODULES` and use Node's native resolver
+- pi's `VIRTUAL_MODULES` binds `@mariozechner/pi-coding-agent` but not
+  `@code-yeongyu/senpi`
+- Attempting a 2-entry strategy (one for each host) results in the senpi
+  entry failing module resolution in pi environments, triggering process exit
+
+### Migration Path
+
+To support both hosts in a single package:
+
+1. **pi-mono loader improvement** (Anthropic):
+   - Treat missing optional dependencies as warnings, not errors
+   - Or: Provide a `@piExt:optional` marker in `pi.extensions` to signal
+     best-effort loading
+
+2. **pi-justbash-sandbox approach** (interim):
+   - Keep pi support on `main` (proven stable)
+   - senpi support on a separate `senpi` branch or separate package
+   - Users can `npm install` the appropriate variant for their host
+   - Or: Use environment detection (`process.env.PI_HOST`) to dispatch
+     at **module export time** (before static imports are evaluated)
+
+3. **Monorepo alternative** (future):
+   - Split into `@sionic-ai/pi-justbash-sandbox` (pi-only)
+   - And `@sionic-ai/senpi-justbash-sandbox` (senpi-only)
+   - Or: `@sionic-ai/justbash-sandbox-core` + conditional re-exports
+
+### senpi Entry Retention
+
+`src/entry-senpi.ts` is committed but unused (marked `@deprecated`) to:
+- Serve as a reference for future migration
+- Avoid rewriting when pi-mono's loader is updated
+- Make the limitation explicit in code
+
+Once pi-mono's loader improves, uncomment the entry in `package.json#pi.extensions`
+and re-enable senpi testing.
