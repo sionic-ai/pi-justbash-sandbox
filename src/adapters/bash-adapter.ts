@@ -63,6 +63,9 @@ export class BashAdapter implements BashOperations {
     if (result.stdout.length > 0) {
       options.onData(Buffer.from(result.stdout, "utf8"));
     }
+    if (result.stderr.length > 0) {
+      options.onData(Buffer.from(result.stderr, "utf8"));
+    }
     return { exitCode: result.exitCode };
   }
 }
