@@ -10,16 +10,6 @@ import { Type } from "@sinclair/typebox";
 const DISABLED_MESSAGE =
   "grep is disabled by @sionic-ai/pi-justbash-sandbox; use `bash grep ...` inside the sandbox instead";
 
-const grepReplacementSchema = Type.Object({
-  pattern: Type.String(),
-  path: Type.Optional(Type.String()),
-  glob: Type.Optional(Type.String()),
-  ignoreCase: Type.Optional(Type.Boolean()),
-  literal: Type.Optional(Type.Boolean()),
-  context: Type.Optional(Type.Number()),
-  limit: Type.Optional(Type.Number()),
-}) as const;
-
 /**
  * Build a stub `grep` {@link ToolDefinition} that short-circuits with
  * an error result. Registering this on an {@link ExtensionAPI} shadows
@@ -27,18 +17,25 @@ const grepReplacementSchema = Type.Object({
  * wins semantics per tool name.
  */
 export function buildDisableGrepTool(): ToolDefinition {
-  // biome-ignore lint/suspicious/noExplicitAny: typebox schema constraint.
-  const schema = grepReplacementSchema as any;
+  // biome-ignore lint/suspicious/noExplicitAny: typebox schema Type constraint requires cast
   return {
     name: "grep",
     label: "grep (disabled)",
     description:
       "grep is disabled inside pi-justbash-sandbox. Shell out via `bash grep ...` to search within the sandbox.",
-    parameters: schema,
+    parameters: Type.Object({
+      pattern: Type.String(),
+      path: Type.Optional(Type.String()),
+      glob: Type.Optional(Type.String()),
+      ignoreCase: Type.Optional(Type.Boolean()),
+      literal: Type.Optional(Type.Boolean()),
+      context: Type.Optional(Type.Number()),
+      limit: Type.Optional(Type.Number()),
+    }) as any,
     async execute(): Promise<AgentToolResult<unknown>> {
       throw new Error(DISABLED_MESSAGE);
     },
-  } as ToolDefinition;
+  } as any;
 }
 
 /**
