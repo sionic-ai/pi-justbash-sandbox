@@ -7,13 +7,14 @@ import createJustBashExtension from "../../src/index.js";
 // biome-ignore lint/suspicious/noExplicitAny: fake ExtensionAPI for integration tests.
 type AnyHandler = (event: any, ctx: any) => any;
 
-function createFakeApi(sandboxRoot?: string) {
+function createFakeApi(sandboxRoot?: string, extraFlags?: Record<string, string>) {
   const registeredTools = new Map<string, { name: string }>();
   const handlers = new Map<string, AnyHandler>();
   const flags = new Map<string, unknown>();
-  const flagValues = new Map<string, boolean | string | undefined>(
-    sandboxRoot !== undefined ? [["sandbox-root", sandboxRoot]] : [],
-  );
+  const flagValues = new Map<string, boolean | string | undefined>([
+    ...(sandboxRoot !== undefined ? [["sandbox-root", sandboxRoot] as const] : []),
+    ...Object.entries(extraFlags ?? {}),
+  ]);
   const api = {
     // biome-ignore lint/suspicious/noExplicitAny: test-only fake.
     registerTool: (tool: any) => {
@@ -106,5 +107,43 @@ describe("default extension factory", () => {
 
     // then
     expect(existsSync(createdRoot)).toBe(false);
+  });
+
+  it("flat mode: session_start uses baseDir directly without subdirectory", async () => {
+    // given
+    const { api, handlers } = createFakeApi(baseDir, { "sandbox-flat": "true" });
+    // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionAPI.
+    await createJustBashExtension(api as any);
+    const start = handlers.get("session_start");
+    const ctx = createFakeCtx("ses-flat");
+
+    // when
+    // biome-ignore lint/suspicious/noExplicitAny: test-only event object.
+    await start?.({} as any, ctx as any);
+
+    // then — no sess-* subdirectories should be created
+    const { readdirSync } = await import("node:fs");
+    const children = readdirSync(baseDir).filter((n) => n.startsWith("sess-"));
+    expect(children.length).toBe(0);
+    expect(existsSync(baseDir)).toBe(true);
+  });
+
+  it("flat mode: session_shutdown does not delete baseDir", async () => {
+    // given
+    const { api, handlers } = createFakeApi(baseDir, { "sandbox-flat": "true" });
+    // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionAPI.
+    await createJustBashExtension(api as any);
+    const start = handlers.get("session_start");
+    const shutdown = handlers.get("session_shutdown");
+    const ctx = createFakeCtx("ses-flat-shutdown");
+    // biome-ignore lint/suspicious/noExplicitAny: test-only event object.
+    await start?.({} as any, ctx as any);
+
+    // when
+    // biome-ignore lint/suspicious/noExplicitAny: test-only event object.
+    await shutdown?.({} as any, ctx as any);
+
+    // then
+    expect(existsSync(baseDir)).toBe(true);
   });
 });
