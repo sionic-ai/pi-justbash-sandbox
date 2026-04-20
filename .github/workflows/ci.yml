@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: ${{ matrix.pkg }} / ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest]
+        pkg: [pnpm, bun]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        if: matrix.pkg == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Configure pnpm cache
+        if: matrix.pkg == 'pnpm'
+        id: pnpm-cache
+        run: echo "store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        if: matrix.pkg == 'pnpm'
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.store }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Setup Bun
+        if: matrix.pkg == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.1"
+
+      - name: Cache Bun install
+        if: matrix.pkg == 'bun'
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install (pnpm)
+        if: matrix.pkg == 'pnpm'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install (bun)
+        if: matrix.pkg == 'bun'
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: ${{ matrix.pkg == 'pnpm' && 'pnpm lint' || 'bun run lint' }}
+
+      - name: Typecheck
+        run: ${{ matrix.pkg == 'pnpm' && 'pnpm typecheck' || 'bun run typecheck' }}
+
+      - name: Test
+        run: ${{ matrix.pkg == 'pnpm' && 'pnpm test' || 'bun run test' }}
+
+      - name: Build
+        run: ${{ matrix.pkg == 'pnpm' && 'pnpm build' || 'bun run build' }}
