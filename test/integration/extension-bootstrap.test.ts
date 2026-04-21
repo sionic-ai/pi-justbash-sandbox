@@ -50,19 +50,18 @@ describe("default extension factory", () => {
     rmSync(baseDir, { recursive: true, force: true });
   });
 
-  it("registers the grep replacement tool and a tool_call blocker at factory time", async () => {
+  it("registers sandbox lifecycle handlers and configuration flags at factory time", async () => {
     // given
-    const { api, registeredTools, handlers } = createFakeApi(baseDir);
+    const { api, handlers, flags } = createFakeApi(baseDir);
 
     // when
     // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionAPI.
     await createJustBashExtension(api as any);
 
     // then
-    expect(registeredTools.has("grep")).toBe(true);
-    expect(handlers.has("tool_call")).toBe(true);
     expect(handlers.has("session_start")).toBe(true);
     expect(handlers.has("session_shutdown")).toBe(true);
+    expect(flags.has("sandbox-network-allowed-urls")).toBe(true);
   });
 
   it("session_start registers the sandboxed bash/read/write/edit tools", async () => {
@@ -77,9 +76,10 @@ describe("default extension factory", () => {
     await start?.({} as any, createFakeCtx("ses-boot") as any);
 
     // then
-    for (const name of ["bash", "read", "write", "edit", "grep"]) {
+    for (const name of ["bash", "read", "write", "edit"]) {
       expect(registeredTools.has(name)).toBe(true);
     }
+    expect(registeredTools.has("grep")).toBe(false);
   });
 
   it("session_shutdown cleans the sandbox root", async () => {

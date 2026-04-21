@@ -27,10 +27,13 @@ interface FakeApiHandle {
   handlers: Map<string, AnyHandler>;
 }
 
-function createFakeApi(sandboxRoot: string): FakeApiHandle {
+function createFakeApi(sandboxRoot: string, extraFlags?: Record<string, string>): FakeApiHandle {
   const tools: FakeApiHandle["tools"] = new Map();
   const handlers = new Map<string, AnyHandler>();
-  const flagValues = new Map<string, boolean | string | undefined>([["sandbox-root", sandboxRoot]]);
+  const flagValues = new Map<string, boolean | string | undefined>([
+    ["sandbox-root", sandboxRoot],
+    ...Object.entries(extraFlags ?? {}),
+  ]);
   const api = {
     // biome-ignore lint/suspicious/noExplicitAny: test-only fake.
     registerTool: (tool: any) => {
@@ -45,8 +48,12 @@ function createFakeApi(sandboxRoot: string): FakeApiHandle {
   return { api, tools, handlers };
 }
 
-async function bootExtensionForSession(sandboxRoot: string, sessionId: string) {
-  const handle = createFakeApi(sandboxRoot);
+async function bootExtensionForSession(
+  sandboxRoot: string,
+  sessionId: string,
+  extraFlags?: Record<string, string>,
+) {
+  const handle = createFakeApi(sandboxRoot, extraFlags);
   await createJustBashExtension(handle.api);
   const start = handle.handlers.get("session_start");
   const ctx = { sessionManager: { getSessionId: () => sessionId } };
@@ -70,6 +77,28 @@ function mustTool(tools: FakeApiHandle["tools"], name: string) {
     throw new Error(`expected tool ${name} to be registered`);
   }
   return tool;
+}
+
+async function withEnv<T>(
+  name: string,
+  value: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const previous = process.env[name];
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = previous;
+    }
+  }
 }
 
 describe("extension tool_call integration", () => {
@@ -179,14 +208,81 @@ describe("extension tool_call integration", () => {
     }
   });
 
-  it("grep tool short-circuits with a sandbox notice", async () => {
+  it("bash tool allows grep through the default extension path", async () => {
     // given
-    const { tools, ctx } = await bootExtensionForSession(sandboxBase, "ses-grep");
-    const grep = mustTool(tools, "grep");
+    const { tools, ctx, root } = await bootExtensionForSession(sandboxBase, "ses-grep");
+    const bash = mustTool(tools, "bash");
+    await import("node:fs/promises").then((m) =>
+      m.writeFile(path.join(root, "sample.txt"), "alpha\nbeta\n"),
+    );
+
+    // when
+    const result = (await bash.execute(
+      "call-grep",
+      { command: "grep beta sample.txt" },
+      undefined,
+      undefined,
+      ctx,
+    )) as { content: { type: string; text?: string }[] };
+
+    // then
+    const joined = (result.content ?? [])
+      .filter((c) => c.type === "text")
+      .map((c) => c.text ?? "")
+      .join("\n");
+    expect(joined).toContain("beta");
+  });
+
+  it("bash tool denies curl when no network allow-list is configured", async () => {
+    // given
+    const { tools, ctx } = await bootExtensionForSession(sandboxBase, "ses-curl-denied");
+    const bash = mustTool(tools, "bash");
 
     // when / then
     await expect(
-      grep.execute("call-grep", { pattern: "anything" }, undefined, undefined, ctx),
-    ).rejects.toThrow(/sandbox/i);
+      bash.execute(
+        "call-curl-denied",
+        { command: "curl -I https://example.com" },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    ).rejects.toThrow(/denied|not allowed|network/i);
+    await expect(
+      bash.execute(
+        "call-curl-denied-no-command-not-found",
+        { command: "curl -I https://example.com" },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    ).rejects.not.toThrow(/command not found/i);
+  });
+
+  it("extension factory reads SANDBOX_NETWORK_ALLOWED_URLS from env", async () => {
+    // given
+    const error = await withEnv(
+      "SANDBOX_NETWORK_ALLOWED_URLS",
+      "https://example.invalid",
+      async () => {
+        const { tools, ctx } = await bootExtensionForSession(sandboxBase, "ses-curl-env");
+        const bash = mustTool(tools, "bash");
+
+        // when
+        return await bash
+          .execute(
+            "call-curl-env",
+            { command: "curl -I https://example.invalid" },
+            undefined,
+            undefined,
+            ctx,
+          )
+          .catch((caught: unknown) => caught);
+      },
+    );
+
+    // then
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toMatch(/denied|not allowed|command not found/i);
   });
 });

@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { Command } from "just-bash";
+import type { Command, NetworkConfig } from "just-bash";
 import { BashAdapter } from "../adapters/bash-adapter.js";
 import { EditAdapter } from "../adapters/edit-adapter.js";
 import { ReadAdapter } from "../adapters/read-adapter.js";
@@ -31,6 +31,8 @@ export interface RegisterSandboxToolsOptions {
    * BashAdapter invocation exposes these names inside its virtual shell.
    */
   readonly hostBinaryBridges?: readonly Command[];
+  /** Network policy forwarded to just-bash for curl/html fetch tools. */
+  readonly network?: NetworkConfig;
 }
 
 /**
@@ -56,6 +58,7 @@ export function registerSandboxTools(
   const bash = new BashAdapter({
     fs,
     root,
+    ...(options.network !== undefined ? { network: options.network } : {}),
     ...(options.hostBinaryBridges !== undefined
       ? { customCommands: options.hostBinaryBridges }
       : {}),
