@@ -1,12 +1,11 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { Command } from "just-bash";
+import type { Command, NetworkConfig } from "just-bash";
 import { createHostBinaryBridges } from "./adapters/host-binary-bridge.js";
 import { installSandboxLifecycle } from "./lifecycle/install-lifecycle.js";
 import { reapOrphans } from "./session/orphan-reaper.js";
 import { SandboxSessionRegistry } from "./session/session-registry.js";
-import { buildDisableGrepTool, buildGrepToolCallBlocker } from "./tools/disable-grep.js";
 import { registerSandboxTools } from "./tools/register-tools.js";
 import type { ToolFactories } from "./tools/tool-factories.js";
 
@@ -14,6 +13,7 @@ const FLAG_SANDBOX_ROOT = "sandbox-root";
 const FLAG_SANDBOX_FLAT = "sandbox-flat";
 const FLAG_MAX_FILE_SIZE_MB = "sandbox-max-file-size-mb";
 const FLAG_HOST_BINARIES = "sandbox-host-binaries";
+const FLAG_NETWORK_ALLOWED_URLS = "sandbox-network-allowed-urls";
 
 const DEFAULT_BASE_DIR = path.join(tmpdir(), "pi-justbash");
 const ORPHAN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -29,7 +29,7 @@ function resolveBaseDir(api: ExtensionAPI): string {
   if (typeof flag === "string" && flag.length > 0) {
     return flag;
   }
-  const env = process.env["SANDBOX_ROOT"];
+  const env = process.env.SANDBOX_ROOT;
   if (env !== undefined && env.length > 0) {
     return env;
   }
@@ -41,14 +41,14 @@ function resolveFlat(api: ExtensionAPI): boolean {
   if (flag === "true" || flag === true) {
     return true;
   }
-  const env = process.env["SANDBOX_FLAT"];
+  const env = process.env.SANDBOX_FLAT;
   return env === "true" || env === "1";
 }
 
 function resolveMaxFileReadSize(api: ExtensionAPI): number | undefined {
   const flag = api.getFlag(FLAG_MAX_FILE_SIZE_MB);
   const raw =
-    typeof flag === "string" && flag.length > 0 ? flag : process.env["SANDBOX_MAX_FILE_SIZE_MB"];
+    typeof flag === "string" && flag.length > 0 ? flag : process.env.SANDBOX_MAX_FILE_SIZE_MB;
   if (raw === undefined || raw.length === 0) {
     return undefined;
   }
@@ -68,7 +68,7 @@ function resolveMaxFileReadSize(api: ExtensionAPI): number | undefined {
 function resolveHostBinaryBridges(api: ExtensionAPI): Command[] {
   const flag = api.getFlag(FLAG_HOST_BINARIES);
   const raw =
-    typeof flag === "string" && flag.length > 0 ? flag : process.env["SANDBOX_HOST_BINARIES"];
+    typeof flag === "string" && flag.length > 0 ? flag : process.env.SANDBOX_HOST_BINARIES;
   if (raw === undefined || raw.length === 0) {
     return [];
   }
@@ -82,6 +82,20 @@ function resolveHostBinaryBridges(api: ExtensionAPI): Command[] {
   return createHostBinaryBridges({ names });
 }
 
+function resolveNetwork(api: ExtensionAPI): NetworkConfig {
+  const flag = api.getFlag(FLAG_NETWORK_ALLOWED_URLS);
+  const raw =
+    typeof flag === "string" && flag.length > 0 ? flag : process.env.SANDBOX_NETWORK_ALLOWED_URLS;
+  if (raw === undefined || raw.length === 0) {
+    return {};
+  }
+  const allowedUrlPrefixes = raw
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+  return allowedUrlPrefixes.length > 0 ? { allowedUrlPrefixes } : {};
+}
+
 /**
  * Build a pi-mono `ExtensionFactory` bound to a specific host's tool
  * factories.  Entry files (`entry-pi.ts`, `entry-senpi.ts`) statically
@@ -93,8 +107,6 @@ function resolveHostBinaryBridges(api: ExtensionAPI): Command[] {
  *
  * - Registers CLI flags (`--sandbox-root`, `--sandbox-max-file-size-mb`).
  * - Sweeps stale sandbox dirs (best-effort orphan reaper).
- * - Shadows the built-in `grep` tool with a disabled stub.
- * - Blocks any stray `grep` tool calls at the `tool_call` gate.
  * - Hooks session start/shutdown/fork/switch for per-session sandbox
  *   roots under `$TMPDIR/pi-justbash/sess-<id>-<nonce>`.
  * - Rebinds sandboxed `bash`/`read`/`write`/`edit` tools on every
@@ -125,22 +137,23 @@ export function createExtensionFactory(
       description:
         "Comma-separated list of host binaries (e.g. `storm,carrier-lint`) to expose inside the sandboxed bash tool.",
     });
+    api.registerFlag(FLAG_NETWORK_ALLOWED_URLS, {
+      type: "string",
+      description:
+        "Comma-separated list of URL prefixes to allow for sandboxed curl/html network access.",
+    });
 
     const baseDir = resolveBaseDir(api);
     const flat = resolveFlat(api);
     const maxFileReadSize = resolveMaxFileReadSize(api);
     const hostBinaryBridges = resolveHostBinaryBridges(api);
+    const network = resolveNetwork(api);
 
     // Best-effort startup sweep — skip when flat mode is active because
     // there are no per-session subdirectories to reap.
     if (!flat) {
       reapOrphans({ baseDir, ttlMs: ORPHAN_TTL_MS }).catch(() => {});
     }
-
-    // Stage 1 of the grep defense-in-depth: shadow the built-in grep tool.
-    api.registerTool(buildDisableGrepTool());
-    // Stage 2: block any lingering grep invocations at the tool_call gate.
-    api.on("tool_call", buildGrepToolCallBlocker());
 
     const registry = new SandboxSessionRegistry({ baseDir, flat });
     const lifecycle = installSandboxLifecycle(api, { registry });
@@ -151,6 +164,7 @@ export function createExtensionFactory(
       registerSandboxTools(api, {
         session,
         factories,
+        network,
         ...(maxFileReadSize !== undefined ? { maxFileReadSize } : {}),
         ...(hostBinaryBridges.length > 0 ? { hostBinaryBridges } : {}),
       });

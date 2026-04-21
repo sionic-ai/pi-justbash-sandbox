@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ReadWriteFs } from "just-bash";
@@ -47,5 +47,22 @@ describe("BashAdapter.exec (stdout)", () => {
     // then
     expect(result.exitCode).toBe(0);
     expect(chunks.join("")).toBe("one\ntwo\nthree\n");
+  });
+
+  it("runs grep inside the sandboxed shell", async () => {
+    // given
+    const fs = new ReadWriteFs({ root, allowSymlinks: false });
+    const adapter = new BashAdapter({ fs, root });
+    const chunks: string[] = [];
+    writeFileSync(path.join(root, "sample.txt"), "alpha\nbeta\n", "utf8");
+
+    // when
+    const result = await adapter.exec("grep beta sample.txt", root, {
+      onData: (data) => chunks.push(data.toString("utf8")),
+    });
+
+    // then
+    expect(result.exitCode).toBe(0);
+    expect(chunks.join("")).toContain("beta");
   });
 });

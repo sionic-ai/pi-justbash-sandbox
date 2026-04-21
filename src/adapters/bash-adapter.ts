@@ -1,5 +1,5 @@
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
-import { Bash, type Command, type IFileSystem } from "just-bash";
+import { Bash, type Command, type IFileSystem, type NetworkConfig } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
 
 /**
@@ -17,6 +17,8 @@ export interface BashAdapterOptions {
    * {@link ../adapters/host-binary-bridge.ts}.
    */
   readonly customCommands?: readonly Command[];
+  /** just-bash network policy for curl/html fetch commands. */
+  readonly network?: NetworkConfig;
 }
 
 /**
@@ -29,11 +31,13 @@ export class BashAdapter implements BashOperations {
   readonly #fs: IFileSystem;
   readonly #root: string;
   readonly #customCommands: readonly Command[];
+  readonly #network: NetworkConfig | undefined;
 
   constructor(options: BashAdapterOptions) {
     this.#fs = options.fs;
     this.#root = options.root;
     this.#customCommands = options.customCommands ?? [];
+    this.#network = options.network;
   }
 
   async exec(
@@ -61,6 +65,7 @@ export class BashAdapter implements BashOperations {
       fs: this.#fs,
       cwd: virtualCwd,
       ...(env !== undefined ? { env } : {}),
+      ...(this.#network !== undefined ? { network: this.#network } : {}),
       ...(this.#customCommands.length > 0 ? { customCommands: [...this.#customCommands] } : {}),
     });
 
