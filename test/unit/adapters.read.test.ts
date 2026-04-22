@@ -32,6 +32,21 @@ describe("ReadAdapter", () => {
     expect(buf.toString("utf8")).toBe("안녕 pi\n");
   });
 
+  it("reads a UTF-8 file when given an already-virtual path", async () => {
+    // given
+    const fs = new ReadWriteFs({ root, allowSymlinks: false });
+    const adapter = new ReadAdapter({ fs, root });
+    const target = path.join(root, "hello.txt");
+    await writeFile(target, "안녕 virtual\n", "utf8");
+
+    // when
+    const buf = await adapter.readFile("/hello.txt");
+
+    // then
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(buf.toString("utf8")).toBe("안녕 virtual\n");
+  });
+
   it("access() resolves for files inside the sandbox", async () => {
     // given
     const fs = new ReadWriteFs({ root, allowSymlinks: false });
@@ -50,6 +65,9 @@ describe("ReadAdapter", () => {
     const outside = path.join(path.dirname(root), "outside.txt");
 
     // when / then
+    // Proposal A reinterprets this host path as a virtual path, so the rejection
+    // now comes from the sandbox fs reporting a missing file rather than from
+    // toVirtualPath() throwing SANDBOX_ESCAPE.
     await expect(adapter.access(outside)).rejects.toThrow();
   });
 
@@ -60,6 +78,9 @@ describe("ReadAdapter", () => {
     const outside = path.join(path.dirname(root), "outside.txt");
 
     // when / then
+    // Proposal A reinterprets this host path as a virtual path, so the rejection
+    // now comes from the sandbox fs reporting a missing file rather than from
+    // toVirtualPath() throwing SANDBOX_ESCAPE.
     await expect(adapter.readFile(outside)).rejects.toThrow();
   });
 });

@@ -30,6 +30,20 @@ describe("WriteAdapter", () => {
     expect(readFileSync(target, "utf8")).toBe("안녕 pi\n");
   });
 
+  it("writes a file when given an already-virtual path", async () => {
+    // given
+    const fs = new ReadWriteFs({ root, allowSymlinks: false });
+    const adapter = new WriteAdapter({ fs, root });
+    const target = path.join(root, "virtual.txt");
+
+    // when
+    await adapter.writeFile("/virtual.txt", "안녕 virtual\n");
+
+    // then
+    expect(existsSync(target)).toBe(true);
+    expect(readFileSync(target, "utf8")).toBe("안녕 virtual\n");
+  });
+
   it("creates missing parent directories on writeFile()", async () => {
     // given
     const fs = new ReadWriteFs({ root, allowSymlinks: false });
@@ -56,14 +70,16 @@ describe("WriteAdapter", () => {
     expect(statSync(dir).isDirectory()).toBe(true);
   });
 
-  it("writeFile() rejects paths outside the sandbox", async () => {
+  it("writeFile() keeps host paths outside the sandbox untouched", async () => {
     // given
     const fs = new ReadWriteFs({ root, allowSymlinks: false });
     const adapter = new WriteAdapter({ fs, root });
     const outside = path.join(path.dirname(root), "outside.txt");
 
-    // when / then
-    await expect(adapter.writeFile(outside, "nope")).rejects.toThrow();
+    // when
+    await adapter.writeFile(outside, "nope");
+
+    // then
     expect(existsSync(outside)).toBe(false);
   });
 });
