@@ -60,6 +60,22 @@ describe("EditAdapter", () => {
     expect(readFileSync(target, "utf8")).toBe("hello pi");
   });
 
+  it("supports the read-then-write flow when given virtual paths", async () => {
+    // given
+    const fs = new ReadWriteFs({ root, allowSymlinks: false });
+    const adapter = new EditAdapter({ fs, root });
+    const target = path.join(root, "virtual.txt");
+    writeFileSync(target, "hello world", "utf8");
+
+    // when
+    const current = (await adapter.readFile("/virtual.txt")).toString("utf8");
+    const updated = current.replace("world", "pi");
+    await adapter.writeFile("/virtual.txt", updated);
+
+    // then
+    expect(readFileSync(target, "utf8")).toBe("hello pi");
+  });
+
   it("access() rejects paths outside the sandbox", async () => {
     // given
     const fs = new ReadWriteFs({ root, allowSymlinks: false });
@@ -67,6 +83,9 @@ describe("EditAdapter", () => {
     const outside = path.join(path.dirname(root), "outside.txt");
 
     // when / then
+    // Proposal A reinterprets this host path as a virtual path, so the rejection
+    // now comes from the sandbox fs reporting a missing file rather than from
+    // toVirtualPath() throwing SANDBOX_ESCAPE.
     await expect(adapter.access(outside)).rejects.toThrow();
   });
 
