@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import type { Command, NetworkConfig } from "just-bash";
 import { createHostBinaryBridges } from "./adapters/host-binary-bridge.js";
 import { installSandboxLifecycle } from "./lifecycle/install-lifecycle.js";
+import { Redactor } from "./security/redactor.js";
 import { reapOrphans } from "./session/orphan-reaper.js";
 import { SandboxSessionRegistry } from "./session/session-registry.js";
 import { registerSandboxTools } from "./tools/register-tools.js";
@@ -14,6 +15,12 @@ const FLAG_SANDBOX_FLAT = "sandbox-flat";
 const FLAG_MAX_FILE_SIZE_MB = "sandbox-max-file-size-mb";
 const FLAG_HOST_BINARIES = "sandbox-host-binaries";
 const FLAG_NETWORK_ALLOWED_URLS = "sandbox-network-allowed-urls";
+const FLAG_REDACT_ENV = "sandbox-redact-env";
+const FLAG_REDACT_MARKER = "sandbox-redaction-marker";
+const FLAG_REDACT_ALLOW = "sandbox-redact-env-allow";
+const FLAG_REDACT_DENY = "sandbox-redact-env-deny";
+const FLAG_REDACT_MIN_LEN = "sandbox-redact-min-length";
+const FLAG_HOST_BRIDGE_ENV_ALLOW = "sandbox-host-binary-env-allow";
 
 const DEFAULT_BASE_DIR = path.join(tmpdir(), "pi-justbash");
 const ORPHAN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -59,27 +66,66 @@ function resolveMaxFileReadSize(api: ExtensionAPI): number | undefined {
   return mb * 1024 * 1024;
 }
 
-/**
- * Read the whitelist of host binaries to bridge into just-bash. The
- * whitelist can come from `--sandbox-host-binaries` (comma-separated)
- * or from the `SANDBOX_HOST_BINARIES` env var. Callers opt in per
- * deployment; the extension ships without any default bridges.
- */
-function resolveHostBinaryBridges(api: ExtensionAPI): Command[] {
-  const flag = api.getFlag(FLAG_HOST_BINARIES);
-  const raw =
-    typeof flag === "string" && flag.length > 0 ? flag : process.env.SANDBOX_HOST_BINARIES;
-  if (raw === undefined || raw.length === 0) {
-    return [];
-  }
-  const names = raw
+function resolveCsv(api: ExtensionAPI, flagName: string, envName: string): readonly string[] {
+  const flag = api.getFlag(flagName);
+  const raw = typeof flag === "string" && flag.length > 0 ? flag : process.env[envName];
+  if (raw === undefined || raw.length === 0) return [];
+  return raw
     .split(",")
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
-  if (names.length === 0) {
-    return [];
-  }
-  return createHostBinaryBridges({ names });
+}
+
+function resolveBooleanFlag(
+  api: ExtensionAPI,
+  flagName: string,
+  envName: string,
+  defaultValue: boolean,
+): boolean {
+  const flag = api.getFlag(flagName);
+  if (flag === true || flag === "true" || flag === "1") return true;
+  if (flag === false || flag === "false" || flag === "0") return false;
+  const env = process.env[envName];
+  if (env === undefined) return defaultValue;
+  if (env === "false" || env === "0" || env === "no") return false;
+  if (env === "true" || env === "1" || env === "yes") return true;
+  return defaultValue;
+}
+
+function resolveRedactor(api: ExtensionAPI): Redactor {
+  const enabled = resolveBooleanFlag(api, FLAG_REDACT_ENV, "SANDBOX_REDACT_ENV", true);
+  if (!enabled) return Redactor.noop();
+  const markerFlag = api.getFlag(FLAG_REDACT_MARKER);
+  const marker =
+    typeof markerFlag === "string" && markerFlag.length > 0
+      ? markerFlag
+      : (process.env.SANDBOX_REDACTION_MARKER ?? "[REDACTED]");
+  const allow = resolveCsv(api, FLAG_REDACT_ALLOW, "SANDBOX_REDACT_ENV_ALLOW");
+  const deny = resolveCsv(api, FLAG_REDACT_DENY, "SANDBOX_REDACT_ENV_DENY");
+  const minLenFlag = api.getFlag(FLAG_REDACT_MIN_LEN);
+  const minLenRaw =
+    typeof minLenFlag === "string" && minLenFlag.length > 0
+      ? minLenFlag
+      : process.env.SANDBOX_REDACT_MIN_LENGTH;
+  const minLenParsed = minLenRaw !== undefined ? Number.parseInt(minLenRaw, 10) : Number.NaN;
+  const minValueLength = Number.isFinite(minLenParsed) && minLenParsed >= 0 ? minLenParsed : 4;
+  return Redactor.fromEnv(process.env, {
+    marker,
+    minValueLength,
+    ...(allow.length > 0 ? { allow } : {}),
+    ...(deny.length > 0 ? { deny } : {}),
+  });
+}
+
+function resolveHostBinaryBridges(api: ExtensionAPI, redactor: Redactor): Command[] {
+  const names = resolveCsv(api, FLAG_HOST_BINARIES, "SANDBOX_HOST_BINARIES");
+  if (names.length === 0) return [];
+  const passThrough = resolveCsv(api, FLAG_HOST_BRIDGE_ENV_ALLOW, "SANDBOX_HOST_BINARY_ENV_ALLOW");
+  return createHostBinaryBridges({
+    names,
+    redactor,
+    ...(passThrough.length > 0 ? { passThroughSecretEnv: passThrough } : {}),
+  });
 }
 
 function resolveNetwork(api: ExtensionAPI): NetworkConfig {
@@ -142,11 +188,41 @@ export function createExtensionFactory(
       description:
         "Comma-separated list of URL prefixes to allow for sandboxed curl/html network access.",
     });
+    api.registerFlag(FLAG_REDACT_ENV, {
+      type: "string",
+      description:
+        'Enable host env-value redaction in tool output (default "true"). Set to "false" to disable.',
+    });
+    api.registerFlag(FLAG_REDACT_MARKER, {
+      type: "string",
+      description: 'Replacement string inserted in place of redacted values. Default "[REDACTED]".',
+    });
+    api.registerFlag(FLAG_REDACT_ALLOW, {
+      type: "string",
+      description:
+        "Comma-separated env var names to exempt from redaction (name appears secret but value is known-safe).",
+    });
+    api.registerFlag(FLAG_REDACT_DENY, {
+      type: "string",
+      description:
+        "Comma-separated env var names to force-redact regardless of the default heuristic.",
+    });
+    api.registerFlag(FLAG_REDACT_MIN_LEN, {
+      type: "string",
+      description:
+        "Minimum value length required for redaction (default 4). Set 0 to always redact.",
+    });
+    api.registerFlag(FLAG_HOST_BRIDGE_ENV_ALLOW, {
+      type: "string",
+      description:
+        "Comma-separated env var names allowed to pass through to host binary bridges despite being classified secret.",
+    });
 
     const baseDir = resolveBaseDir(api);
     const flat = resolveFlat(api);
     const maxFileReadSize = resolveMaxFileReadSize(api);
-    const hostBinaryBridges = resolveHostBinaryBridges(api);
+    const redactor = resolveRedactor(api);
+    const hostBinaryBridges = resolveHostBinaryBridges(api, redactor);
     const network = resolveNetwork(api);
 
     // Best-effort startup sweep — skip when flat mode is active because
@@ -165,6 +241,7 @@ export function createExtensionFactory(
         session,
         factories,
         network,
+        redactor,
         ...(maxFileReadSize !== undefined ? { maxFileReadSize } : {}),
         ...(hostBinaryBridges.length > 0 ? { hostBinaryBridges } : {}),
       });

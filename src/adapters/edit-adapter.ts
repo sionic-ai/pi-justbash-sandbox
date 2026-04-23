@@ -1,7 +1,9 @@
 import path from "node:path";
 import type { EditOperations } from "@mariozechner/pi-coding-agent";
 import type { IFileSystem } from "just-bash";
+import { looksBinary } from "../fs/detect-content-type.js";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
+import { Redactor } from "../security/redactor.js";
 
 /**
  * Construction parameters for {@link EditAdapter}.
@@ -11,6 +13,13 @@ export interface EditAdapterOptions {
   readonly fs: IFileSystem;
   /** Host-absolute sandbox root. */
   readonly root: string;
+  /**
+   * Redactor applied to both `readFile` and `writeFile`. On read, the
+   * original bytes are returned untouched when the content looks binary
+   * so the round-trip cannot corrupt them. Defaults to
+   * {@link Redactor.noop}.
+   */
+  readonly redactor?: Redactor;
 }
 
 /**
@@ -23,16 +32,22 @@ export interface EditAdapterOptions {
 export class EditAdapter implements EditOperations {
   readonly #fs: IFileSystem;
   readonly #root: string;
+  readonly #redactor: Redactor;
 
   constructor(options: EditAdapterOptions) {
     this.#fs = options.fs;
     this.#root = options.root;
+    this.#redactor = options.redactor ?? Redactor.noop();
   }
 
   async readFile(absolutePath: string): Promise<Buffer> {
     const virtualPath = toVirtualPath(this.#root, absolutePath);
     const bytes = await this.#fs.readFileBuffer(virtualPath);
-    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (this.#redactor.isNoop() || looksBinary(bytes)) {
+      return raw;
+    }
+    return this.#redactor.redactBuffer(raw);
   }
 
   async writeFile(absolutePath: string, content: string): Promise<void> {
@@ -41,7 +56,8 @@ export class EditAdapter implements EditOperations {
     if (parent !== "" && parent !== "/" && parent !== ".") {
       await this.#fs.mkdir(parent, { recursive: true });
     }
-    await this.#fs.writeFile(virtualPath, content);
+    const redacted = this.#redactor.isNoop() ? content : this.#redactor.redact(content);
+    await this.#fs.writeFile(virtualPath, redacted);
   }
 
   async access(absolutePath: string): Promise<void> {

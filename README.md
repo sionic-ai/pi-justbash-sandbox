@@ -116,6 +116,17 @@ tool call runs against the per-session sandbox root.
 |------|------|---------|---------|
 | `--sandbox-root <path>` | string | `$TMPDIR/pi-justbash` | Base directory under which per-session sandbox roots are created. |
 | `--sandbox-max-file-size-mb <n>` | string | `10` | Override the maximum file read size for the sandbox fs. |
+| `--sandbox-redact-env <bool>` | string | `true` | Redact host env-var values (API keys, tokens, ...) from bash output + file read/write. Set `false` to disable. |
+| `--sandbox-redaction-marker <s>` | string | `[REDACTED]` | Replacement string used when a secret value is redacted. |
+| `--sandbox-redact-env-allow <csv>` | string | — | Comma-separated env var names to exempt from redaction even when they look secret. |
+| `--sandbox-redact-env-deny <csv>` | string | — | Comma-separated env var names to force-redact regardless of the default heuristic. |
+| `--sandbox-redact-min-length <n>` | string | `4` | Minimum value length required for a secret value to be redacted (prevents over-redaction of short strings like `"0"` / `"1"`). |
+| `--sandbox-host-binary-env-allow <csv>` | string | — | Comma-separated env var names that may pass through to host binary bridges (e.g. `storm`) despite being classified secret. |
+
+All redaction flags also accept `SANDBOX_*` env var equivalents
+(`SANDBOX_REDACT_ENV`, `SANDBOX_REDACTION_MARKER`,
+`SANDBOX_REDACT_ENV_ALLOW`, `SANDBOX_REDACT_ENV_DENY`,
+`SANDBOX_REDACT_MIN_LENGTH`, `SANDBOX_HOST_BINARY_ENV_ALLOW`).
 
 ### Tool behaviour at a glance
 

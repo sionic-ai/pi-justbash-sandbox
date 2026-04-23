@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import type { Command } from "just-bash";
 import { defineCommand } from "just-bash";
+import { Redactor } from "../security/redactor.js";
+import { isSecretEnvName } from "../security/secret-env.js";
 
 /**
  * Construction parameters for {@link createHostBinaryBridges}.
@@ -13,6 +15,19 @@ export interface HostBinaryBridgeOptions {
    * even when an optional tool is missing.
    */
   readonly names: readonly string[];
+  /**
+   * Extra env var names to PASS THROUGH to the host binary despite
+   * being classified secret (e.g. a `STORM_API_TOKEN` the host tool
+   * actually needs). Matched case-insensitively. Anything not on this
+   * list and classified secret is stripped from the child process env
+   * so the binary cannot exfiltrate keys from the operator's shell.
+   */
+  readonly passThroughSecretEnv?: readonly string[];
+  /**
+   * Redactor applied to the host binary's stdout / stderr before it is
+   * handed back to just-bash. Defaults to {@link Redactor.noop}.
+   */
+  readonly redactor?: Redactor;
 }
 
 /**
@@ -36,23 +51,39 @@ export interface HostBinaryBridgeOptions {
  */
 export function createHostBinaryBridges(options: HostBinaryBridgeOptions): Command[] {
   const commands: Command[] = [];
+  const passThrough = new Set(
+    (options.passThroughSecretEnv ?? []).map((name) => name.trim().toUpperCase()),
+  );
+  const redactor = options.redactor ?? Redactor.noop();
   for (const rawName of options.names) {
     const name = rawName.trim();
     if (name.length === 0) continue;
-    commands.push(buildBridgeCommand(name));
+    commands.push(buildBridgeCommand(name, passThrough, redactor));
   }
   return commands;
 }
 
-function buildBridgeCommand(name: string): Command {
+function shouldStrip(name: string, passThrough: ReadonlySet<string>): boolean {
+  if (passThrough.has(name.toUpperCase())) return false;
+  return isSecretEnvName(name);
+}
+
+function buildBridgeCommand(
+  name: string,
+  passThrough: ReadonlySet<string>,
+  redactor: Redactor,
+): Command {
   return defineCommand(name, async (args, ctx) => {
     const cwd = typeof ctx.cwd === "string" && ctx.cwd.length > 0 ? ctx.cwd : "/";
 
-    // just-bash passes env as Map<string, string>. Merge onto process.env so
-    // the spawned host binary inherits PATH, HOME, etc. in addition to the
-    // caller's overrides.
-    const env: NodeJS.ProcessEnv = { ...process.env };
+    const env: NodeJS.ProcessEnv = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (typeof value !== "string") continue;
+      if (shouldStrip(key, passThrough)) continue;
+      env[key] = value;
+    }
     for (const [key, value] of ctx.env) {
+      if (shouldStrip(key, passThrough)) continue;
       env[key] = value;
     }
 
@@ -77,9 +108,11 @@ function buildBridgeCommand(name: string): Command {
       child.once("close", (code) => resolve(code ?? 1));
     });
 
+    const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+    const stderr = Buffer.concat(stderrChunks).toString("utf8");
     return {
-      stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-      stderr: Buffer.concat(stderrChunks).toString("utf8"),
+      stdout: redactor.isNoop() ? stdout : redactor.redact(stdout),
+      stderr: redactor.isNoop() ? stderr : redactor.redact(stderr),
       exitCode,
     };
   });

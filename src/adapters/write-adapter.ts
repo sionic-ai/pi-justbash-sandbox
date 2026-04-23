@@ -2,6 +2,7 @@ import path from "node:path";
 import type { WriteOperations } from "@mariozechner/pi-coding-agent";
 import type { IFileSystem } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
+import { Redactor } from "../security/redactor.js";
 
 /**
  * Construction parameters for {@link WriteAdapter}.
@@ -11,6 +12,13 @@ export interface WriteAdapterOptions {
   readonly fs: IFileSystem;
   /** Host-absolute sandbox root. */
   readonly root: string;
+  /**
+   * Redactor applied to `writeFile` content before it hits disk.
+   * Prevents the agent from exfiltrating host env values by writing
+   * them to a file that later gets synced / uploaded. Defaults to
+   * {@link Redactor.noop}.
+   */
+  readonly redactor?: Redactor;
 }
 
 /**
@@ -23,10 +31,12 @@ export interface WriteAdapterOptions {
 export class WriteAdapter implements WriteOperations {
   readonly #fs: IFileSystem;
   readonly #root: string;
+  readonly #redactor: Redactor;
 
   constructor(options: WriteAdapterOptions) {
     this.#fs = options.fs;
     this.#root = options.root;
+    this.#redactor = options.redactor ?? Redactor.noop();
   }
 
   async writeFile(absolutePath: string, content: string): Promise<void> {
@@ -35,7 +45,8 @@ export class WriteAdapter implements WriteOperations {
     if (parent !== "" && parent !== "/" && parent !== ".") {
       await this.#fs.mkdir(parent, { recursive: true });
     }
-    await this.#fs.writeFile(virtualPath, content);
+    const redacted = this.#redactor.isNoop() ? content : this.#redactor.redact(content);
+    await this.#fs.writeFile(virtualPath, redacted);
   }
 
   async mkdir(dir: string): Promise<void> {

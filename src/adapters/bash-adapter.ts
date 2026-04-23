@@ -1,6 +1,7 @@
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
 import { Bash, type Command, type IFileSystem, type NetworkConfig } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
+import { Redactor } from "../security/redactor.js";
 
 /**
  * Construction parameters for {@link BashAdapter}.
@@ -19,6 +20,13 @@ export interface BashAdapterOptions {
   readonly customCommands?: readonly Command[];
   /** just-bash network policy for curl/html fetch commands. */
   readonly network?: NetworkConfig;
+  /**
+   * Redactor applied to stdout / stderr chunks before they reach pi's
+   * `onData` callback. Prevents host env-var values (API keys, tokens)
+   * from leaking to the agent via `env` / `printenv` / process output.
+   * Defaults to {@link Redactor.noop}.
+   */
+  readonly redactor?: Redactor;
 }
 
 /**
@@ -32,12 +40,14 @@ export class BashAdapter implements BashOperations {
   readonly #root: string;
   readonly #customCommands: readonly Command[];
   readonly #network: NetworkConfig | undefined;
+  readonly #redactor: Redactor;
 
   constructor(options: BashAdapterOptions) {
     this.#fs = options.fs;
     this.#root = options.root;
     this.#customCommands = options.customCommands ?? [];
     this.#network = options.network;
+    this.#redactor = options.redactor ?? Redactor.noop();
   }
 
   async exec(
@@ -50,13 +60,16 @@ export class BashAdapter implements BashOperations {
       env?: NodeJS.ProcessEnv;
     },
   ): Promise<{ exitCode: number | null }> {
+    const redactor = this.#redactor;
+    const emit = (buf: Buffer): void => {
+      options.onData(redactor.redactBuffer(buf));
+    };
+
     let virtualCwd: string;
     try {
       virtualCwd = toVirtualPath(this.#root, cwd);
     } catch {
-      options.onData(
-        Buffer.from(`pi-justbash-sandbox: cwd ${JSON.stringify(cwd)} is outside the sandbox\n`),
-      );
+      emit(Buffer.from(`pi-justbash-sandbox: cwd ${JSON.stringify(cwd)} is outside the sandbox\n`));
       return { exitCode: 126 };
     }
 
@@ -94,17 +107,15 @@ export class BashAdapter implements BashOperations {
       const result = await bash.exec(command, { signal: controller.signal });
 
       if (result.stdout.length > 0) {
-        options.onData(Buffer.from(result.stdout, "utf8"));
+        emit(Buffer.from(result.stdout, "utf8"));
       }
       if (result.stderr.length > 0) {
-        options.onData(Buffer.from(result.stderr, "utf8"));
+        emit(Buffer.from(result.stderr, "utf8"));
       }
 
       if (controller.signal.aborted) {
         if (timeoutFired) {
-          options.onData(
-            Buffer.from(`pi-justbash-sandbox: command timed out after ${options.timeout}ms\n`),
-          );
+          emit(Buffer.from(`pi-justbash-sandbox: command timed out after ${options.timeout}ms\n`));
           return { exitCode: 124 };
         }
         return { exitCode: 130 };

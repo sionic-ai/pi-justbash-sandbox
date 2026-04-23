@@ -5,6 +5,7 @@ import { EditAdapter } from "../adapters/edit-adapter.js";
 import { ReadAdapter } from "../adapters/read-adapter.js";
 import { WriteAdapter } from "../adapters/write-adapter.js";
 import { createSandboxFs } from "../fs/create-sandbox-fs.js";
+import { Redactor } from "../security/redactor.js";
 import type { SandboxSession } from "../session/sandbox-session.js";
 import type { ToolFactories } from "./tool-factories.js";
 
@@ -33,6 +34,12 @@ export interface RegisterSandboxToolsOptions {
   readonly hostBinaryBridges?: readonly Command[];
   /** Network policy forwarded to just-bash for curl/html fetch tools. */
   readonly network?: NetworkConfig;
+  /**
+   * Shared {@link Redactor} passed to every adapter so host env values
+   * are scrubbed from bash output, file reads / writes, and host binary
+   * bridges. Omit to opt out of redaction entirely.
+   */
+  readonly redactor?: Redactor;
 }
 
 /**
@@ -55,17 +62,19 @@ export function registerSandboxTools(
     ...(options.maxFileReadSize !== undefined ? { maxFileReadSize: options.maxFileReadSize } : {}),
   });
 
+  const redactor = options.redactor ?? Redactor.noop();
   const bash = new BashAdapter({
     fs,
     root,
+    redactor,
     ...(options.network !== undefined ? { network: options.network } : {}),
     ...(options.hostBinaryBridges !== undefined
       ? { customCommands: options.hostBinaryBridges }
       : {}),
   });
-  const read = new ReadAdapter({ fs, root });
-  const write = new WriteAdapter({ fs, root });
-  const edit = new EditAdapter({ fs, root });
+  const read = new ReadAdapter({ fs, root, redactor });
+  const write = new WriteAdapter({ fs, root, redactor });
+  const edit = new EditAdapter({ fs, root, redactor });
 
   const {
     createBashToolDefinition,
