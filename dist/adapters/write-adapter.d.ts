@@ -1,5 +1,6 @@
 import type { WriteOperations } from "@mariozechner/pi-coding-agent";
 import type { IFileSystem } from "just-bash";
+import { Redactor } from "../security/redactor.js";
 /**
  * Construction parameters for {@link WriteAdapter}.
  */
@@ -8,6 +9,13 @@ export interface WriteAdapterOptions {
     readonly fs: IFileSystem;
     /** Host-absolute sandbox root. */
     readonly root: string;
+    /**
+     * Redactor applied to `writeFile` content before it hits disk.
+     * Prevents the agent from exfiltrating host env values by writing
+     * them to a file that later gets synced / uploaded. Defaults to
+     * {@link Redactor.noop}.
+     */
+    readonly redactor?: Redactor;
 }
 /**
  * pi-mono {@link WriteOperations} implementation that writes through the

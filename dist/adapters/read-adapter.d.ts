@@ -1,5 +1,6 @@
 import type { ReadOperations } from "@mariozechner/pi-coding-agent";
 import type { IFileSystem } from "just-bash";
+import { Redactor } from "../security/redactor.js";
 /**
  * Construction parameters for {@link ReadAdapter}.
  */
@@ -8,6 +9,13 @@ export interface ReadAdapterOptions {
     readonly fs: IFileSystem;
     /** Host-absolute sandbox root. */
     readonly root: string;
+    /**
+     * Redactor applied to text file content before it is returned to pi.
+     * Skipped for files whose magic bytes identify them as binary (image
+     * formats) so raw bytes are preserved for MIME detection and image
+     * attachments. Defaults to {@link Redactor.noop}.
+     */
+    readonly redactor?: Redactor;
 }
 /**
  * pi-mono {@link ReadOperations} implementation that delegates to the

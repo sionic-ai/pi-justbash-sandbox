@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Command, NetworkConfig } from "just-bash";
+import { Redactor } from "../security/redactor.js";
 import type { SandboxSession } from "../session/sandbox-session.js";
 import type { ToolFactories } from "./tool-factories.js";
 /**
@@ -27,6 +28,12 @@ export interface RegisterSandboxToolsOptions {
     readonly hostBinaryBridges?: readonly Command[];
     /** Network policy forwarded to just-bash for curl/html fetch tools. */
     readonly network?: NetworkConfig;
+    /**
+     * Shared {@link Redactor} passed to every adapter so host env values
+     * are scrubbed from bash output, file reads / writes, and host binary
+     * bridges. Omit to opt out of redaction entirely.
+     */
+    readonly redactor?: Redactor;
 }
 /**
  * Register the sandboxed replacements for the built-in pi-mono tools

@@ -1,4 +1,5 @@
 import type { Command } from "just-bash";
+import { Redactor } from "../security/redactor.js";
 /**
  * Construction parameters for {@link createHostBinaryBridges}.
  */
@@ -10,6 +11,19 @@ export interface HostBinaryBridgeOptions {
      * even when an optional tool is missing.
      */
     readonly names: readonly string[];
+    /**
+     * Extra env var names to PASS THROUGH to the host binary despite
+     * being classified secret (e.g. a `STORM_API_TOKEN` the host tool
+     * actually needs). Matched case-insensitively. Anything not on this
+     * list and classified secret is stripped from the child process env
+     * so the binary cannot exfiltrate keys from the operator's shell.
+     */
+    readonly passThroughSecretEnv?: readonly string[];
+    /**
+     * Redactor applied to the host binary's stdout / stderr before it is
+     * handed back to just-bash. Defaults to {@link Redactor.noop}.
+     */
+    readonly redactor?: Redactor;
 }
 /**
  * Build `just-bash` command definitions that bridge a whitelist of host

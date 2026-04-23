@@ -1,5 +1,7 @@
 import path from "node:path";
+import { looksBinary } from "../fs/detect-content-type.js";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
+import { Redactor } from "../security/redactor.js";
 /**
  * pi-mono {@link EditOperations} implementation. The edit tool drives a
  * read → mutate → write flow and expects all three operations to observe
@@ -10,14 +12,20 @@ import { toVirtualPath } from "../fs/sandbox-paths.js";
 export class EditAdapter {
     #fs;
     #root;
+    #redactor;
     constructor(options) {
         this.#fs = options.fs;
         this.#root = options.root;
+        this.#redactor = options.redactor ?? Redactor.noop();
     }
     async readFile(absolutePath) {
         const virtualPath = toVirtualPath(this.#root, absolutePath);
         const bytes = await this.#fs.readFileBuffer(virtualPath);
-        return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        if (this.#redactor.isNoop() || looksBinary(bytes)) {
+            return raw;
+        }
+        return this.#redactor.redactBuffer(raw);
     }
     async writeFile(absolutePath, content) {
         const virtualPath = toVirtualPath(this.#root, absolutePath);
@@ -25,7 +33,8 @@ export class EditAdapter {
         if (parent !== "" && parent !== "/" && parent !== ".") {
             await this.#fs.mkdir(parent, { recursive: true });
         }
-        await this.#fs.writeFile(virtualPath, content);
+        const redacted = this.#redactor.isNoop() ? content : this.#redactor.redact(content);
+        await this.#fs.writeFile(virtualPath, redacted);
     }
     async access(absolutePath) {
         const virtualPath = toVirtualPath(this.#root, absolutePath);

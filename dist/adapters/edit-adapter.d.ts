@@ -1,5 +1,6 @@
 import type { EditOperations } from "@mariozechner/pi-coding-agent";
 import type { IFileSystem } from "just-bash";
+import { Redactor } from "../security/redactor.js";
 /**
  * Construction parameters for {@link EditAdapter}.
  */
@@ -8,6 +9,13 @@ export interface EditAdapterOptions {
     readonly fs: IFileSystem;
     /** Host-absolute sandbox root. */
     readonly root: string;
+    /**
+     * Redactor applied to both `readFile` and `writeFile`. On read, the
+     * original bytes are returned untouched when the content looks binary
+     * so the round-trip cannot corrupt them. Defaults to
+     * {@link Redactor.noop}.
+     */
+    readonly redactor?: Redactor;
 }
 /**
  * pi-mono {@link EditOperations} implementation. The edit tool drives a

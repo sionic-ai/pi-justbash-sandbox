@@ -1,5 +1,6 @@
 import { Bash } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
+import { Redactor } from "../security/redactor.js";
 /**
  * pi-mono {@link BashOperations} implementation that runs every command
  * inside a fresh `just-bash` `Bash` instance scoped to the sandbox
@@ -11,19 +12,25 @@ export class BashAdapter {
     #root;
     #customCommands;
     #network;
+    #redactor;
     constructor(options) {
         this.#fs = options.fs;
         this.#root = options.root;
         this.#customCommands = options.customCommands ?? [];
         this.#network = options.network;
+        this.#redactor = options.redactor ?? Redactor.noop();
     }
     async exec(command, cwd, options) {
+        const redactor = this.#redactor;
+        const emit = (buf) => {
+            options.onData(redactor.redactBuffer(buf));
+        };
         let virtualCwd;
         try {
             virtualCwd = toVirtualPath(this.#root, cwd);
         }
         catch {
-            options.onData(Buffer.from(`pi-justbash-sandbox: cwd ${JSON.stringify(cwd)} is outside the sandbox\n`));
+            emit(Buffer.from(`pi-justbash-sandbox: cwd ${JSON.stringify(cwd)} is outside the sandbox\n`));
             return { exitCode: 126 };
         }
         const env = toStringEnv(options.env);
@@ -54,14 +61,14 @@ export class BashAdapter {
         try {
             const result = await bash.exec(command, { signal: controller.signal });
             if (result.stdout.length > 0) {
-                options.onData(Buffer.from(result.stdout, "utf8"));
+                emit(Buffer.from(result.stdout, "utf8"));
             }
             if (result.stderr.length > 0) {
-                options.onData(Buffer.from(result.stderr, "utf8"));
+                emit(Buffer.from(result.stderr, "utf8"));
             }
             if (controller.signal.aborted) {
                 if (timeoutFired) {
-                    options.onData(Buffer.from(`pi-justbash-sandbox: command timed out after ${options.timeout}ms\n`));
+                    emit(Buffer.from(`pi-justbash-sandbox: command timed out after ${options.timeout}ms\n`));
                     return { exitCode: 124 };
                 }
                 return { exitCode: 130 };

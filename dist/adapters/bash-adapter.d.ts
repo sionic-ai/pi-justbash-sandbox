@@ -1,5 +1,6 @@
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
 import { type Command, type IFileSystem, type NetworkConfig } from "just-bash";
+import { Redactor } from "../security/redactor.js";
 /**
  * Construction parameters for {@link BashAdapter}.
  */
@@ -17,6 +18,13 @@ export interface BashAdapterOptions {
     readonly customCommands?: readonly Command[];
     /** just-bash network policy for curl/html fetch commands. */
     readonly network?: NetworkConfig;
+    /**
+     * Redactor applied to stdout / stderr chunks before they reach pi's
+     * `onData` callback. Prevents host env-var values (API keys, tokens)
+     * from leaking to the agent via `env` / `printenv` / process output.
+     * Defaults to {@link Redactor.noop}.
+     */
+    readonly redactor?: Redactor;
 }
 /**
  * pi-mono {@link BashOperations} implementation that runs every command

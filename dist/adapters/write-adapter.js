@@ -1,5 +1,6 @@
 import path from "node:path";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
+import { Redactor } from "../security/redactor.js";
 /**
  * pi-mono {@link WriteOperations} implementation that writes through the
  * sandbox `ReadWriteFs`. `writeFile()` auto-creates missing parent
@@ -10,9 +11,11 @@ import { toVirtualPath } from "../fs/sandbox-paths.js";
 export class WriteAdapter {
     #fs;
     #root;
+    #redactor;
     constructor(options) {
         this.#fs = options.fs;
         this.#root = options.root;
+        this.#redactor = options.redactor ?? Redactor.noop();
     }
     async writeFile(absolutePath, content) {
         const virtualPath = toVirtualPath(this.#root, absolutePath);
@@ -20,7 +23,8 @@ export class WriteAdapter {
         if (parent !== "" && parent !== "/" && parent !== ".") {
             await this.#fs.mkdir(parent, { recursive: true });
         }
-        await this.#fs.writeFile(virtualPath, content);
+        const redacted = this.#redactor.isNoop() ? content : this.#redactor.redact(content);
+        await this.#fs.writeFile(virtualPath, redacted);
     }
     async mkdir(dir) {
         const virtualPath = toVirtualPath(this.#root, dir);
