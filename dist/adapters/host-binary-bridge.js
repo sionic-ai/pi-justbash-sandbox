@@ -23,37 +23,45 @@ import { isSecretEnvName } from "../security/secret-env.js";
  */
 export function createHostBinaryBridges(options) {
     const commands = [];
-    const passThrough = new Set((options.passThroughSecretEnv ?? []).map((name) => name.trim().toUpperCase()));
+    const passThrough = normalizePassThrough(options.passThroughSecretEnv);
     const redactor = options.redactor ?? Redactor.noop();
+    const classifierOptions = options.classifierOptions ?? {};
     for (const rawName of options.names) {
         const name = rawName.trim();
         if (name.length === 0)
             continue;
-        commands.push(buildBridgeCommand(name, passThrough, redactor));
+        commands.push(buildBridgeCommand(name, passThrough, redactor, classifierOptions));
     }
     return commands;
 }
-function shouldStrip(name, passThrough) {
+export function normalizePassThrough(names) {
+    return new Set((names ?? []).map((name) => name.trim().toUpperCase()));
+}
+export function buildHostBridgeEnv(processEnv, ctxEnv, passThrough, classifierOptions) {
+    const out = {};
+    for (const [key, value] of Object.entries(processEnv)) {
+        if (typeof value !== "string")
+            continue;
+        if (shouldStrip(key, passThrough, classifierOptions))
+            continue;
+        out[key] = value;
+    }
+    for (const [key, value] of ctxEnv) {
+        if (shouldStrip(key, passThrough, classifierOptions))
+            continue;
+        out[key] = value;
+    }
+    return out;
+}
+function shouldStrip(name, passThrough, classifierOptions) {
     if (passThrough.has(name.toUpperCase()))
         return false;
-    return isSecretEnvName(name);
+    return isSecretEnvName(name, classifierOptions);
 }
-function buildBridgeCommand(name, passThrough, redactor) {
+function buildBridgeCommand(name, passThrough, redactor, classifierOptions) {
     return defineCommand(name, async (args, ctx) => {
         const cwd = typeof ctx.cwd === "string" && ctx.cwd.length > 0 ? ctx.cwd : "/";
-        const env = {};
-        for (const [key, value] of Object.entries(process.env)) {
-            if (typeof value !== "string")
-                continue;
-            if (shouldStrip(key, passThrough))
-                continue;
-            env[key] = value;
-        }
-        for (const [key, value] of ctx.env) {
-            if (shouldStrip(key, passThrough))
-                continue;
-            env[key] = value;
-        }
+        const env = buildHostBridgeEnv(process.env, ctx.env, passThrough, classifierOptions);
         const child = spawn(name, args, {
             cwd,
             env,

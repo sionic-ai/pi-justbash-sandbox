@@ -1,6 +1,7 @@
 import { Bash } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
 import { Redactor } from "../security/redactor.js";
+import { isSecretEnvName } from "../security/secret-env.js";
 /**
  * pi-mono {@link BashOperations} implementation that runs every command
  * inside a fresh `just-bash` `Bash` instance scoped to the sandbox
@@ -13,12 +14,16 @@ export class BashAdapter {
     #customCommands;
     #network;
     #redactor;
+    #stripShellEnv;
+    #classifierOptions;
     constructor(options) {
         this.#fs = options.fs;
         this.#root = options.root;
         this.#customCommands = options.customCommands ?? [];
         this.#network = options.network;
         this.#redactor = options.redactor ?? Redactor.noop();
+        this.#stripShellEnv = options.stripSecretEnvFromShell === true;
+        this.#classifierOptions = options.classifierOptions ?? {};
     }
     async exec(command, cwd, options) {
         const redactor = this.#redactor;
@@ -34,10 +39,13 @@ export class BashAdapter {
             return { exitCode: 126 };
         }
         const env = toStringEnv(options.env);
+        const shellEnv = this.#stripShellEnv && env !== undefined
+            ? stripSecretEntries(env, this.#classifierOptions)
+            : env;
         const bash = new Bash({
             fs: this.#fs,
             cwd: virtualCwd,
-            ...(env !== undefined ? { env } : {}),
+            ...(shellEnv !== undefined ? { env: shellEnv } : {}),
             ...(this.#network !== undefined ? { network: this.#network } : {}),
             ...(this.#customCommands.length > 0 ? { customCommands: [...this.#customCommands] } : {}),
         });
@@ -92,6 +100,15 @@ function toStringEnv(env) {
         if (typeof value === "string") {
             out[key] = value;
         }
+    }
+    return out;
+}
+function stripSecretEntries(env, classifierOptions) {
+    const out = {};
+    for (const [key, value] of Object.entries(env)) {
+        if (isSecretEnvName(key, classifierOptions))
+            continue;
+        out[key] = value;
     }
     return out;
 }

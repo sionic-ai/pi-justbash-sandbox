@@ -1,10 +1,17 @@
 export declare function detectImageMagic(bytes: Uint8Array): string | null;
 /**
- * Heuristic check for binary content beyond known image formats. A
- * buffer is deemed binary if it contains a NUL byte in the first 4 KiB
- * - a common signal used by `file(1)` / git - or if known image magic
- * bytes match. Used to skip UTF-8 redaction over content that would
- * otherwise be silently corrupted by the round-trip.
+ * Whitelist text detector. Returns true only when the buffer's prefix:
+ *   - is not an image (magic-byte match),
+ *   - contains no NUL bytes in the first TEXT_SAMPLE_BYTES (catches
+ *     UTF-16, UTF-32, and most compiled / compressed formats), and
+ *   - decodes as strict UTF-8 via `TextDecoder({ fatal: true })`.
+ *
+ * Before decoding we trim any dangling multibyte sequence at the sample
+ * tail so a well-formed large file is not rejected by a mid-codepoint
+ * truncation at the sample boundary.
+ *
+ * Used as the gate for UTF-8 round-trip redaction - any input that
+ * fails the whitelist is returned untouched to avoid silent corruption.
  */
-export declare function looksBinary(bytes: Uint8Array): boolean;
+export declare function looksText(bytes: Uint8Array): boolean;
 //# sourceMappingURL=detect-content-type.d.ts.map

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { looksBinary } from "../fs/detect-content-type.js";
+import { looksText } from "../fs/detect-content-type.js";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
 import { Redactor } from "../security/redactor.js";
 /**
@@ -22,7 +22,7 @@ export class EditAdapter {
         const virtualPath = toVirtualPath(this.#root, absolutePath);
         const bytes = await this.#fs.readFileBuffer(virtualPath);
         const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        if (this.#redactor.isNoop() || looksBinary(bytes)) {
+        if (this.#redactor.isNoop() || !looksText(bytes)) {
             return raw;
         }
         return this.#redactor.redactBuffer(raw);

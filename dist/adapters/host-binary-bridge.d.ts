@@ -1,5 +1,6 @@
 import type { Command } from "just-bash";
 import { Redactor } from "../security/redactor.js";
+import { type SecretEnvClassifierOptions } from "../security/secret-env.js";
 /**
  * Construction parameters for {@link createHostBinaryBridges}.
  */
@@ -24,6 +25,13 @@ export interface HostBinaryBridgeOptions {
      * handed back to just-bash. Defaults to {@link Redactor.noop}.
      */
     readonly redactor?: Redactor;
+    /**
+     * Classifier allow / deny overrides. Must match the overrides used
+     * everywhere else in the extension so `--sandbox-redact-env-allow`
+     * and `--sandbox-redact-env-deny` apply uniformly to bridge env
+     * filtering as well.
+     */
+    readonly classifierOptions?: SecretEnvClassifierOptions;
 }
 /**
  * Build `just-bash` command definitions that bridge a whitelist of host
@@ -45,4 +53,6 @@ export interface HostBinaryBridgeOptions {
  * tool whose filesystem access would compromise the sandbox.
  */
 export declare function createHostBinaryBridges(options: HostBinaryBridgeOptions): Command[];
+export declare function normalizePassThrough(names?: readonly string[]): ReadonlySet<string>;
+export declare function buildHostBridgeEnv(processEnv: NodeJS.ProcessEnv | Record<string, string | undefined>, ctxEnv: Iterable<readonly [string, string]>, passThrough: ReadonlySet<string>, classifierOptions: SecretEnvClassifierOptions): Record<string, string>;
 //# sourceMappingURL=host-binary-bridge.d.ts.map

@@ -21,10 +21,13 @@ export function registerSandboxTools(api, options) {
         ...(options.maxFileReadSize !== undefined ? { maxFileReadSize: options.maxFileReadSize } : {}),
     });
     const redactor = options.redactor ?? Redactor.noop();
+    const classifierOptions = options.classifierOptions ?? {};
     const bash = new BashAdapter({
         fs,
         root,
         redactor,
+        classifierOptions,
+        stripSecretEnvFromShell: options.stripSecretEnvFromShell === true,
         ...(options.network !== undefined ? { network: options.network } : {}),
         ...(options.hostBinaryBridges !== undefined
             ? { customCommands: options.hostBinaryBridges }

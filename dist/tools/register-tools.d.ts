@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Command, NetworkConfig } from "just-bash";
 import { Redactor } from "../security/redactor.js";
+import type { SecretEnvClassifierOptions } from "../security/secret-env.js";
 import type { SandboxSession } from "../session/sandbox-session.js";
 import type { ToolFactories } from "./tool-factories.js";
 /**
@@ -34,6 +35,18 @@ export interface RegisterSandboxToolsOptions {
      * bridges. Omit to opt out of redaction entirely.
      */
     readonly redactor?: Redactor;
+    /**
+     * When true, {@link BashAdapter} strips secret env entries from the
+     * shell it constructs so the agent cannot expand `$SECRET` inline
+     * (defense in depth on top of output redaction). Forwarded unchanged
+     * to {@link BashAdapter.stripSecretEnvFromShell}.
+     */
+    readonly stripSecretEnvFromShell?: boolean;
+    /**
+     * Classifier allow / deny overrides propagated to every adapter that
+     * classifies env names (bash shell strip, host bridge env strip).
+     */
+    readonly classifierOptions?: SecretEnvClassifierOptions;
 }
 /**
  * Register the sandboxed replacements for the built-in pi-mono tools
