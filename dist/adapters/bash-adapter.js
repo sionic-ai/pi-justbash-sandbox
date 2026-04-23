@@ -10,10 +10,12 @@ export class BashAdapter {
     #fs;
     #root;
     #customCommands;
+    #network;
     constructor(options) {
         this.#fs = options.fs;
         this.#root = options.root;
         this.#customCommands = options.customCommands ?? [];
+        this.#network = options.network;
     }
     async exec(command, cwd, options) {
         let virtualCwd;
@@ -29,6 +31,7 @@ export class BashAdapter {
             fs: this.#fs,
             cwd: virtualCwd,
             ...(env !== undefined ? { env } : {}),
+            ...(this.#network !== undefined ? { network: this.#network } : {}),
             ...(this.#customCommands.length > 0 ? { customCommands: [...this.#customCommands] } : {}),
         });
         const controller = new AbortController();

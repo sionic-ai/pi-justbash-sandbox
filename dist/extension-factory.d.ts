@@ -11,8 +11,6 @@ import type { ToolFactories } from "./tools/tool-factories.js";
  *
  * - Registers CLI flags (`--sandbox-root`, `--sandbox-max-file-size-mb`).
  * - Sweeps stale sandbox dirs (best-effort orphan reaper).
- * - Shadows the built-in `grep` tool with a disabled stub.
- * - Blocks any stray `grep` tool calls at the `tool_call` gate.
  * - Hooks session start/shutdown/fork/switch for per-session sandbox
  *   roots under `$TMPDIR/pi-justbash/sess-<id>-<nonce>`.
  * - Rebinds sandboxed `bash`/`read`/`write`/`edit` tools on every

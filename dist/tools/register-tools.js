@@ -22,6 +22,7 @@ export function registerSandboxTools(api, options) {
     const bash = new BashAdapter({
         fs,
         root,
+        ...(options.network !== undefined ? { network: options.network } : {}),
         ...(options.hostBinaryBridges !== undefined
             ? { customCommands: options.hostBinaryBridges }
             : {}),

@@ -1,5 +1,5 @@
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
-import { type Command, type IFileSystem } from "just-bash";
+import { type Command, type IFileSystem, type NetworkConfig } from "just-bash";
 /**
  * Construction parameters for {@link BashAdapter}.
  */
@@ -15,6 +15,8 @@ export interface BashAdapterOptions {
      * {@link ../adapters/host-binary-bridge.ts}.
      */
     readonly customCommands?: readonly Command[];
+    /** just-bash network policy for curl/html fetch commands. */
+    readonly network?: NetworkConfig;
 }
 /**
  * pi-mono {@link BashOperations} implementation that runs every command

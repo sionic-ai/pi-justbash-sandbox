@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { Command } from "just-bash";
+import type { Command, NetworkConfig } from "just-bash";
 import type { SandboxSession } from "../session/sandbox-session.js";
 import type { ToolFactories } from "./tool-factories.js";
 /**
@@ -25,6 +25,8 @@ export interface RegisterSandboxToolsOptions {
      * BashAdapter invocation exposes these names inside its virtual shell.
      */
     readonly hostBinaryBridges?: readonly Command[];
+    /** Network policy forwarded to just-bash for curl/html fetch tools. */
+    readonly network?: NetworkConfig;
 }
 /**
  * Register the sandboxed replacements for the built-in pi-mono tools
