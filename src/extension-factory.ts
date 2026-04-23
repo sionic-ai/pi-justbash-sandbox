@@ -5,6 +5,7 @@ import type { Command, NetworkConfig } from "just-bash";
 import { createHostBinaryBridges } from "./adapters/host-binary-bridge.js";
 import { installSandboxLifecycle } from "./lifecycle/install-lifecycle.js";
 import { Redactor } from "./security/redactor.js";
+import type { SecretEnvClassifierOptions } from "./security/secret-env.js";
 import { reapOrphans } from "./session/orphan-reaper.js";
 import { SandboxSessionRegistry } from "./session/session-registry.js";
 import { registerSandboxTools } from "./tools/register-tools.js";
@@ -21,6 +22,7 @@ const FLAG_REDACT_ALLOW = "sandbox-redact-env-allow";
 const FLAG_REDACT_DENY = "sandbox-redact-env-deny";
 const FLAG_REDACT_MIN_LEN = "sandbox-redact-min-length";
 const FLAG_HOST_BRIDGE_ENV_ALLOW = "sandbox-host-binary-env-allow";
+const FLAG_STRIP_BASH_ENV = "sandbox-strip-bash-env";
 
 const DEFAULT_BASE_DIR = path.join(tmpdir(), "pi-justbash");
 const ORPHAN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -92,16 +94,35 @@ function resolveBooleanFlag(
   return defaultValue;
 }
 
-function resolveRedactor(api: ExtensionAPI): Redactor {
+interface RedactionSettings {
+  readonly enabled: boolean;
+  readonly stripBashEnv: boolean;
+  readonly redactor: Redactor;
+  readonly classifierOptions: SecretEnvClassifierOptions;
+}
+
+function resolveRedactionSettings(api: ExtensionAPI): RedactionSettings {
   const enabled = resolveBooleanFlag(api, FLAG_REDACT_ENV, "SANDBOX_REDACT_ENV", true);
-  if (!enabled) return Redactor.noop();
+  const allow = resolveCsv(api, FLAG_REDACT_ALLOW, "SANDBOX_REDACT_ENV_ALLOW");
+  const deny = resolveCsv(api, FLAG_REDACT_DENY, "SANDBOX_REDACT_ENV_DENY");
+  const classifierOptions: SecretEnvClassifierOptions = {
+    ...(allow.length > 0 ? { allow } : {}),
+    ...(deny.length > 0 ? { deny } : {}),
+  };
+  const stripBashEnv = resolveBooleanFlag(
+    api,
+    FLAG_STRIP_BASH_ENV,
+    "SANDBOX_STRIP_BASH_ENV",
+    enabled,
+  );
+  if (!enabled) {
+    return { enabled: false, stripBashEnv, redactor: Redactor.noop(), classifierOptions };
+  }
   const markerFlag = api.getFlag(FLAG_REDACT_MARKER);
   const marker =
     typeof markerFlag === "string" && markerFlag.length > 0
       ? markerFlag
       : (process.env.SANDBOX_REDACTION_MARKER ?? "[REDACTED]");
-  const allow = resolveCsv(api, FLAG_REDACT_ALLOW, "SANDBOX_REDACT_ENV_ALLOW");
-  const deny = resolveCsv(api, FLAG_REDACT_DENY, "SANDBOX_REDACT_ENV_DENY");
   const minLenFlag = api.getFlag(FLAG_REDACT_MIN_LEN);
   const minLenRaw =
     typeof minLenFlag === "string" && minLenFlag.length > 0
@@ -109,21 +130,23 @@ function resolveRedactor(api: ExtensionAPI): Redactor {
       : process.env.SANDBOX_REDACT_MIN_LENGTH;
   const minLenParsed = minLenRaw !== undefined ? Number.parseInt(minLenRaw, 10) : Number.NaN;
   const minValueLength = Number.isFinite(minLenParsed) && minLenParsed >= 0 ? minLenParsed : 4;
-  return Redactor.fromEnv(process.env, {
+  const redactor = Redactor.fromEnv(process.env, {
     marker,
     minValueLength,
     ...(allow.length > 0 ? { allow } : {}),
     ...(deny.length > 0 ? { deny } : {}),
   });
+  return { enabled: true, stripBashEnv, redactor, classifierOptions };
 }
 
-function resolveHostBinaryBridges(api: ExtensionAPI, redactor: Redactor): Command[] {
+function resolveHostBinaryBridges(api: ExtensionAPI, settings: RedactionSettings): Command[] {
   const names = resolveCsv(api, FLAG_HOST_BINARIES, "SANDBOX_HOST_BINARIES");
   if (names.length === 0) return [];
   const passThrough = resolveCsv(api, FLAG_HOST_BRIDGE_ENV_ALLOW, "SANDBOX_HOST_BINARY_ENV_ALLOW");
   return createHostBinaryBridges({
     names,
-    redactor,
+    redactor: settings.redactor,
+    classifierOptions: settings.classifierOptions,
     ...(passThrough.length > 0 ? { passThroughSecretEnv: passThrough } : {}),
   });
 }
@@ -217,12 +240,17 @@ export function createExtensionFactory(
       description:
         "Comma-separated env var names allowed to pass through to host binary bridges despite being classified secret.",
     });
+    api.registerFlag(FLAG_STRIP_BASH_ENV, {
+      type: "string",
+      description:
+        'When "true" (default follows --sandbox-redact-env), secret-classified entries are stripped from the shell env handed to just-bash so the agent cannot expand $SECRET inline.',
+    });
 
     const baseDir = resolveBaseDir(api);
     const flat = resolveFlat(api);
     const maxFileReadSize = resolveMaxFileReadSize(api);
-    const redactor = resolveRedactor(api);
-    const hostBinaryBridges = resolveHostBinaryBridges(api, redactor);
+    const redactionSettings = resolveRedactionSettings(api);
+    const hostBinaryBridges = resolveHostBinaryBridges(api, redactionSettings);
     const network = resolveNetwork(api);
 
     // Best-effort startup sweep — skip when flat mode is active because
@@ -241,7 +269,9 @@ export function createExtensionFactory(
         session,
         factories,
         network,
-        redactor,
+        redactor: redactionSettings.redactor,
+        classifierOptions: redactionSettings.classifierOptions,
+        stripSecretEnvFromShell: redactionSettings.stripBashEnv,
         ...(maxFileReadSize !== undefined ? { maxFileReadSize } : {}),
         ...(hostBinaryBridges.length > 0 ? { hostBinaryBridges } : {}),
       });

@@ -1,6 +1,6 @@
 import type { ReadOperations } from "@mariozechner/pi-coding-agent";
 import type { IFileSystem } from "just-bash";
-import { detectImageMagic, looksBinary } from "../fs/detect-content-type.js";
+import { detectImageMagic, looksText } from "../fs/detect-content-type.js";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
 import { Redactor } from "../security/redactor.js";
 
@@ -43,7 +43,7 @@ export class ReadAdapter implements ReadOperations {
     const virtualPath = toVirtualPath(this.#root, absolutePath);
     const bytes = await this.#fs.readFileBuffer(virtualPath);
     const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    if (this.#redactor.isNoop() || looksBinary(bytes)) {
+    if (this.#redactor.isNoop() || !looksText(bytes)) {
       return raw;
     }
     return this.#redactor.redactBuffer(raw);

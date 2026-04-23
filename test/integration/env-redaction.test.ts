@@ -218,6 +218,67 @@ describe("sandbox redacts host env values across bash / read / write / edit", ()
     });
   });
 
+  it("strip-bash-env default (true) makes $SECRET expand to empty inside the agent's shell", async () => {
+    await withEnv({ ANTHROPIC_API_KEY: secret }, async () => {
+      // given
+      const { api, registered, handlers } = createFakeApi(sandboxBase);
+      // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionAPI.
+      await createJustBashExtension(api as any);
+      const start = handlers.get("session_start");
+      const ctx = { sessionManager: { getSessionId: () => "ses-strip-default" } };
+      // biome-ignore lint/suspicious/noExplicitAny: test-only event object.
+      await start?.({} as any, ctx as any);
+      const bash = registered.get("bash");
+      if (bash === undefined) throw new Error("bash tool not registered");
+
+      // when
+      const result = await bash.execute(
+        "call-strip-default",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell expansion
+        { command: 'echo "resolved=${ANTHROPIC_API_KEY:-missing}"' },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      // then
+      const text = flattenText(result);
+      expect(text).not.toContain(secret);
+      expect(text).toContain("missing");
+    });
+  });
+
+  it("strip-bash-env=false lets the shell expand the secret again", async () => {
+    await withEnv({ ANTHROPIC_API_KEY: secret, SANDBOX_STRIP_BASH_ENV: "false" }, async () => {
+      // given
+      const { api, registered, handlers } = createFakeApi(sandboxBase);
+      // biome-ignore lint/suspicious/noExplicitAny: test-only fake ExtensionAPI.
+      await createJustBashExtension(api as any);
+      const start = handlers.get("session_start");
+      const ctx = { sessionManager: { getSessionId: () => "ses-strip-off" } };
+      // biome-ignore lint/suspicious/noExplicitAny: test-only event object.
+      await start?.({} as any, ctx as any);
+      const bash = registered.get("bash");
+      if (bash === undefined) throw new Error("bash tool not registered");
+
+      // when
+      const result = await bash.execute(
+        "call-strip-off",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell expansion
+        { command: 'echo "resolved=${ANTHROPIC_API_KEY:-missing}"' },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      // then
+      const text = flattenText(result);
+      expect(text).not.toContain(secret);
+      expect(text).toContain("[REDACTED]");
+      expect(text).not.toContain("missing");
+    });
+  });
+
   it("custom marker via SANDBOX_REDACTION_MARKER flows through", async () => {
     await withEnv(
       { ANTHROPIC_API_KEY: secret, SANDBOX_REDACTION_MARKER: "<<HIDDEN>>" },

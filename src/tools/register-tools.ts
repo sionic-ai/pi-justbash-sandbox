@@ -6,6 +6,7 @@ import { ReadAdapter } from "../adapters/read-adapter.js";
 import { WriteAdapter } from "../adapters/write-adapter.js";
 import { createSandboxFs } from "../fs/create-sandbox-fs.js";
 import { Redactor } from "../security/redactor.js";
+import type { SecretEnvClassifierOptions } from "../security/secret-env.js";
 import type { SandboxSession } from "../session/sandbox-session.js";
 import type { ToolFactories } from "./tool-factories.js";
 
@@ -40,6 +41,18 @@ export interface RegisterSandboxToolsOptions {
    * bridges. Omit to opt out of redaction entirely.
    */
   readonly redactor?: Redactor;
+  /**
+   * When true, {@link BashAdapter} strips secret env entries from the
+   * shell it constructs so the agent cannot expand `$SECRET` inline
+   * (defense in depth on top of output redaction). Forwarded unchanged
+   * to {@link BashAdapter.stripSecretEnvFromShell}.
+   */
+  readonly stripSecretEnvFromShell?: boolean;
+  /**
+   * Classifier allow / deny overrides propagated to every adapter that
+   * classifies env names (bash shell strip, host bridge env strip).
+   */
+  readonly classifierOptions?: SecretEnvClassifierOptions;
 }
 
 /**
@@ -63,10 +76,13 @@ export function registerSandboxTools(
   });
 
   const redactor = options.redactor ?? Redactor.noop();
+  const classifierOptions: SecretEnvClassifierOptions = options.classifierOptions ?? {};
   const bash = new BashAdapter({
     fs,
     root,
     redactor,
+    classifierOptions,
+    stripSecretEnvFromShell: options.stripSecretEnvFromShell === true,
     ...(options.network !== undefined ? { network: options.network } : {}),
     ...(options.hostBinaryBridges !== undefined
       ? { customCommands: options.hostBinaryBridges }

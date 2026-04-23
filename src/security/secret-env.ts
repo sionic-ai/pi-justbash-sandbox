@@ -125,6 +125,25 @@ const SECRET_SEGMENTS: ReadonlySet<string> = new Set([
   "XSRF",
   "ACCESS",
   "REFRESH",
+  "DSN",
+  "PAT",
+  "APIKEY",
+  "LICENSE",
+  "DATABASE",
+  "POSTGRES",
+  "POSTGRESQL",
+  "MYSQL",
+  "MARIADB",
+  "REDIS",
+  "MONGO",
+  "MONGODB",
+  "ELASTICSEARCH",
+  "ELASTIC",
+  "RABBITMQ",
+  "AMQP",
+  "KAFKA",
+  "MEMCACHED",
+  "CASSANDRA",
 ]);
 
 /**
@@ -145,6 +164,51 @@ const SECRET_EXACT_NAMES: ReadonlySet<string> = new Set([
   "AWS_PROFILE",
   "AWS_SESSION_TOKEN",
   "AWS_SECURITY_TOKEN",
+  "DATABASE_URL",
+  "DATABASE_URI",
+  "DATABASE_CONNECTION",
+  "DATABASE_CONNECTION_STRING",
+  "DB_URL",
+  "DB_URI",
+  "DB_CONNECTION",
+  "DB_CONNECTION_STRING",
+  "POSTGRES_URL",
+  "POSTGRESQL_URL",
+  "PG_URL",
+  "PG_CONNECTION",
+  "MYSQL_URL",
+  "MYSQL_CONNECTION",
+  "MARIADB_URL",
+  "REDIS_URL",
+  "REDIS_URI",
+  "REDIS_CONNECTION",
+  "MONGO_URL",
+  "MONGO_URI",
+  "MONGODB_URL",
+  "MONGODB_URI",
+  "ELASTICSEARCH_URL",
+  "ELASTIC_URL",
+  "RABBITMQ_URL",
+  "AMQP_URL",
+  "KAFKA_URL",
+  "CONNECTION_STRING",
+  "CONNECTIONSTRING",
+  "SENTRY_DSN",
+  "ROLLBAR_ACCESS_TOKEN",
+  "DOCKER_AUTH_CONFIG",
+  "DOCKERHUB_PASSWORD",
+  "NPM_TOKEN",
+  "NPM_CONFIG_AUTHTOKEN",
+  "GITHUB_PAT",
+  "GITLAB_PAT",
+  "BITBUCKET_PAT",
+  "CIRCLE_TOKEN",
+  "CIRCLECI_TOKEN",
+  "TRAVIS_TOKEN",
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_API_KEY",
+  "HUGGING_FACE_HUB_TOKEN",
+  "HF_TOKEN",
 ]);
 
 /**
@@ -205,9 +269,26 @@ export function isSecretEnvName(name: string, options?: SecretEnvClassifierOptio
   if (allow.has(upper)) return false;
   if (SAFE_NAMES.has(upper)) return false;
   if (SECRET_EXACT_NAMES.has(upper)) return true;
+  if (matchesSecretSuffix(upper)) return true;
   const segments = upper.split(/[^A-Z0-9]+/g).filter((seg) => seg.length > 0);
   for (const segment of segments) {
     if (SECRET_SEGMENTS.has(segment)) return true;
+  }
+  return false;
+}
+
+const SECRET_SUFFIXES: readonly string[] = [
+  "_CONNECTION_STRING",
+  "_CONNECTIONSTRING",
+  "CONNECTION_STRING",
+  "_CONNECTION_URI",
+  "_CONNECTION_URL",
+  "_DSN",
+];
+
+function matchesSecretSuffix(upper: string): boolean {
+  for (const suffix of SECRET_SUFFIXES) {
+    if (upper.endsWith(suffix) && upper.length > suffix.length) return true;
   }
   return false;
 }

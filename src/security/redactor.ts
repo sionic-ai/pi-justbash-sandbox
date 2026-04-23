@@ -13,21 +13,37 @@ export interface RedactorOptions extends SecretEnvClassifierOptions {
 
 /**
  * Replace known-secret env values with a constant marker in arbitrary
- * text. Values are sorted by descending length before replacement so a
- * value that happens to be a substring of a longer secret does not
- * corrupt the longer one's redaction. Replacement uses plain-string
- * split/join so secret values containing regex metacharacters ($, \,
- * ^, ...) are handled safely.
+ * text. Two cooperating passes run on every input:
+ *
+ *   1. Value pass: every env value that was classified secret at
+ *      snapshot time is replaced via plain-string split/join (longest
+ *      first so a shorter value cannot eat a longer one's prefix, and
+ *      regex metacharacters are safe).
+ *   2. Generic name pass: a regex finds ANY shell-style `NAME=value`,
+ *      `(NAME=value)`, `$(NAME=value)`, `export NAME=...`,
+ *      `declare -x NAME=...` occurrence and asks the classifier whether
+ *      NAME is secret. This covers values the agent set at runtime
+ *      (outside the snapshot) and values that names we have never seen.
+ *
+ * Before either pass we strip ANSI control sequences so an agent cannot
+ * split a secret with a color escape and bypass the value pass.
  */
 export class Redactor {
   readonly #orderedValues: readonly string[];
-  readonly #secretNames: readonly string[];
   readonly #marker: string;
+  readonly #classifierOptions: SecretEnvClassifierOptions;
+  readonly #noop: boolean;
 
-  private constructor(values: readonly string[], names: readonly string[], marker: string) {
+  private constructor(
+    values: readonly string[],
+    marker: string,
+    classifierOptions: SecretEnvClassifierOptions,
+    noop: boolean,
+  ) {
     this.#orderedValues = values;
-    this.#secretNames = names;
     this.#marker = marker;
+    this.#classifierOptions = classifierOptions;
+    this.#noop = noop;
   }
 
   static fromEnv(
@@ -45,40 +61,55 @@ export class Redactor {
     }
 
     const uniqueValues = new Set<string>();
-    const names: string[] = [];
     for (const [name, value] of Object.entries(env)) {
       if (!isSecretEnvName(name, classifierOptions)) continue;
-      names.push(name);
       if (typeof value === "string" && value.length >= minLength) {
         uniqueValues.add(value);
       }
     }
     const ordered = Array.from(uniqueValues).sort((a, b) => b.length - a.length);
-    return new Redactor(ordered, names, marker);
+    return new Redactor(ordered, marker, classifierOptions, false);
   }
 
   static noop(): Redactor {
-    return new Redactor([], [], "[REDACTED]");
+    return new Redactor([], "[REDACTED]", {}, true);
   }
 
   isNoop(): boolean {
-    return this.#orderedValues.length === 0 && this.#secretNames.length === 0;
+    return this.#noop;
+  }
+
+  getClassifierOptions(): SecretEnvClassifierOptions {
+    return this.#classifierOptions;
   }
 
   redact(text: string): string {
-    if (this.#orderedValues.length === 0 && this.#secretNames.length === 0) {
-      return text;
-    }
+    if (this.isNoop()) return text;
     let out = text;
     for (const value of this.#orderedValues) {
       if (out.includes(value)) {
         out = out.split(value).join(this.#marker);
       }
     }
-    if (this.#secretNames.length > 0) {
-      out = redactKeyValueLines(out, this.#secretNames, this.#marker);
+    out = redactNameValueForms(out, this.#classifierOptions, this.#marker);
+    if (!this.#anyValueStillVisible(out)) return out;
+    let stripped = stripAnsi(out);
+    for (const value of this.#orderedValues) {
+      if (stripped.includes(value)) {
+        stripped = stripped.split(value).join(this.#marker);
+      }
     }
-    return out;
+    stripped = redactNameValueForms(stripped, this.#classifierOptions, this.#marker);
+    return stripped;
+  }
+
+  #anyValueStillVisible(text: string): boolean {
+    if (this.#orderedValues.length === 0) return false;
+    const stripped = stripAnsi(text);
+    for (const value of this.#orderedValues) {
+      if (stripped.includes(value)) return true;
+    }
+    return false;
   }
 
   /**
@@ -95,29 +126,39 @@ export class Redactor {
   }
 }
 
-function escapeRegex(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * ANSI CSI / OSC / ESC control-sequence stripper. We remove these
+ * before matching so a secret split across a color escape still gets
+ * caught, and so the marker output is clean text for the LLM.
+ */
+const ANSI_PATTERN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences require literal control bytes.
+  /\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1B]*(?:\x07|\x1B\\)|\]|\(.|\).|[@-Z\\_])/g;
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, "");
 }
 
 /**
- * Redact NAME=value lines as printed by env / printenv / declare -p
- * even when the value slipped past the value-based pass (empty string,
- * whitespace-only, etc.). Matches two forms:
- *   - NAME=value up to end-of-line
- *   - declare -x NAME="value" or declare -x NAME='value'
+ * Match any shell-style NAME=value occurrence (with or without a
+ * surrounding declare / export prefix) and ask the classifier per name.
+ * A name must be preceded by a word boundary (`\b`) so `FOO_KEY` inside
+ * `SNEAKY_FOO_KEY` does not match.
+ *
+ * Value body is either:
+ *   - double-quoted up to the next unescaped double quote or newline
+ *   - single-quoted up to the next single quote or newline
+ *   - otherwise bare: any run of characters that is not whitespace /
+ *     newline / statement separator / closing bracket-like delimiter.
  */
-function redactKeyValueLines(text: string, names: readonly string[], marker: string): string {
-  if (names.length === 0) return text;
-  const alternation = names.map(escapeRegex).join("|");
-  const envLine = new RegExp(
-    `(^|[\\n\\s;&|])(${alternation})=(?:"[^"\\n]*"|'[^'\\n]*'|[^\\s\\n;&|]*)`,
-    "g",
-  );
-  const declareLine = new RegExp(
-    `(declare\\s+-[a-zA-Z]+\\s+)(${alternation})=(?:"[^"\\n]*"|'[^'\\n]*'|\\S+)`,
-    "g",
-  );
-  return text
-    .replace(envLine, (_match, prefix: string, name: string) => `${prefix}${name}=${marker}`)
-    .replace(declareLine, (_match, prefix: string, name: string) => `${prefix}${name}=${marker}`);
+const NAME_VALUE_PATTERN =
+  /\b([A-Z][A-Z0-9_]*)=(?:"((?:\\.|[^"\\\n])*)"|'([^'\n]*)'|([^\s\n;&|)`'"}\]]*))/g;
+function redactNameValueForms(
+  text: string,
+  classifierOptions: SecretEnvClassifierOptions,
+  marker: string,
+): string {
+  return text.replace(NAME_VALUE_PATTERN, (match, name: string) => {
+    if (!isSecretEnvName(name, classifierOptions)) return match;
+    return `${name}=${marker}`;
+  });
 }

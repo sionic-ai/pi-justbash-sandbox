@@ -2,6 +2,7 @@ import type { BashOperations } from "@mariozechner/pi-coding-agent";
 import { Bash, type Command, type IFileSystem, type NetworkConfig } from "just-bash";
 import { toVirtualPath } from "../fs/sandbox-paths.js";
 import { Redactor } from "../security/redactor.js";
+import { isSecretEnvName, type SecretEnvClassifierOptions } from "../security/secret-env.js";
 
 /**
  * Construction parameters for {@link BashAdapter}.
@@ -27,6 +28,23 @@ export interface BashAdapterOptions {
    * Defaults to {@link Redactor.noop}.
    */
   readonly redactor?: Redactor;
+  /**
+   * When true, secret-classified entries are stripped from the shell
+   * env before the `Bash` instance is constructed. The agent then
+   * literally cannot `echo $ANTHROPIC_API_KEY` - output redaction only
+   * hides values; stripping prevents the agent from USING the secret
+   * in outbound calls (e.g. curl with Authorization header). Default
+   * false so existing behaviour is preserved unless the extension
+   * factory opts in.
+   */
+  readonly stripSecretEnvFromShell?: boolean;
+  /**
+   * Classifier allow / deny overrides applied when
+   * {@link BashAdapterOptions.stripSecretEnvFromShell} is true. Must
+   * match the overrides used by {@link Redactor.fromEnv} so the agent
+   * sees a consistent classification across strip and redact paths.
+   */
+  readonly classifierOptions?: SecretEnvClassifierOptions;
 }
 
 /**
@@ -41,6 +59,8 @@ export class BashAdapter implements BashOperations {
   readonly #customCommands: readonly Command[];
   readonly #network: NetworkConfig | undefined;
   readonly #redactor: Redactor;
+  readonly #stripShellEnv: boolean;
+  readonly #classifierOptions: SecretEnvClassifierOptions;
 
   constructor(options: BashAdapterOptions) {
     this.#fs = options.fs;
@@ -48,6 +68,8 @@ export class BashAdapter implements BashOperations {
     this.#customCommands = options.customCommands ?? [];
     this.#network = options.network;
     this.#redactor = options.redactor ?? Redactor.noop();
+    this.#stripShellEnv = options.stripSecretEnvFromShell === true;
+    this.#classifierOptions = options.classifierOptions ?? {};
   }
 
   async exec(
@@ -74,10 +96,14 @@ export class BashAdapter implements BashOperations {
     }
 
     const env = toStringEnv(options.env);
+    const shellEnv =
+      this.#stripShellEnv && env !== undefined
+        ? stripSecretEntries(env, this.#classifierOptions)
+        : env;
     const bash = new Bash({
       fs: this.#fs,
       cwd: virtualCwd,
-      ...(env !== undefined ? { env } : {}),
+      ...(shellEnv !== undefined ? { env: shellEnv } : {}),
       ...(this.#network !== undefined ? { network: this.#network } : {}),
       ...(this.#customCommands.length > 0 ? { customCommands: [...this.#customCommands] } : {}),
     });
@@ -140,6 +166,18 @@ function toStringEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string>
     if (typeof value === "string") {
       out[key] = value;
     }
+  }
+  return out;
+}
+
+function stripSecretEntries(
+  env: Record<string, string>,
+  classifierOptions: SecretEnvClassifierOptions,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (isSecretEnvName(key, classifierOptions)) continue;
+    out[key] = value;
   }
   return out;
 }

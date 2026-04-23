@@ -116,17 +116,59 @@ tool call runs against the per-session sandbox root.
 |------|------|---------|---------|
 | `--sandbox-root <path>` | string | `$TMPDIR/pi-justbash` | Base directory under which per-session sandbox roots are created. |
 | `--sandbox-max-file-size-mb <n>` | string | `10` | Override the maximum file read size for the sandbox fs. |
-| `--sandbox-redact-env <bool>` | string | `true` | Redact host env-var values (API keys, tokens, ...) from bash output + file read/write. Set `false` to disable. |
+| `--sandbox-redact-env <bool>` | string | `true` | Master switch. Redact host env-var values (API keys, tokens, database URLs, ...) from bash output, file read/write, edit, and host-binary-bridge stdout/stderr. Also controls whether the agent's shell inherits secret entries (see `--sandbox-strip-bash-env`). |
+| `--sandbox-strip-bash-env <bool>` | string | follows `--sandbox-redact-env` | Strip secret-classified entries from the env handed to `just-bash` so the agent cannot expand `$SECRET` inline. Defense-in-depth on top of output redaction. |
 | `--sandbox-redaction-marker <s>` | string | `[REDACTED]` | Replacement string used when a secret value is redacted. |
-| `--sandbox-redact-env-allow <csv>` | string | — | Comma-separated env var names to exempt from redaction even when they look secret. |
-| `--sandbox-redact-env-deny <csv>` | string | — | Comma-separated env var names to force-redact regardless of the default heuristic. |
-| `--sandbox-redact-min-length <n>` | string | `4` | Minimum value length required for a secret value to be redacted (prevents over-redaction of short strings like `"0"` / `"1"`). |
-| `--sandbox-host-binary-env-allow <csv>` | string | — | Comma-separated env var names that may pass through to host binary bridges (e.g. `storm`) despite being classified secret. |
+| `--sandbox-redact-env-allow <csv>` | string | — | Comma-separated env var names to exempt from redaction + stripping even when they match the secret heuristic. Propagated to bash env filter, host bridge env filter, and the output redactor. |
+| `--sandbox-redact-env-deny <csv>` | string | — | Comma-separated env var names to force-redact regardless of the default heuristic. Also forces stripping from the bash env and host bridge env. |
+| `--sandbox-redact-min-length <n>` | string | `4` | Minimum value length required for a secret value to enter the output-value replacement table (prevents over-redaction of short strings like `"0"` / `"1"`). The name-form redactor (NAME=value) runs regardless of this threshold. |
+| `--sandbox-host-binary-env-allow <csv>` | string | — | Comma-separated env var names allowed to pass through to host binary bridges (e.g. `storm`) despite being classified secret. Independent of `--sandbox-redact-env-allow`. |
 
 All redaction flags also accept `SANDBOX_*` env var equivalents
-(`SANDBOX_REDACT_ENV`, `SANDBOX_REDACTION_MARKER`,
-`SANDBOX_REDACT_ENV_ALLOW`, `SANDBOX_REDACT_ENV_DENY`,
-`SANDBOX_REDACT_MIN_LENGTH`, `SANDBOX_HOST_BINARY_ENV_ALLOW`).
+(`SANDBOX_REDACT_ENV`, `SANDBOX_STRIP_BASH_ENV`,
+`SANDBOX_REDACTION_MARKER`, `SANDBOX_REDACT_ENV_ALLOW`,
+`SANDBOX_REDACT_ENV_DENY`, `SANDBOX_REDACT_MIN_LENGTH`,
+`SANDBOX_HOST_BINARY_ENV_ALLOW`).
+
+### Redaction threat model
+
+The sandbox treats the LLM agent as **untrusted** and assumes host env
+vars (API keys, access tokens, connection strings, `SSH_AUTH_SOCK`)
+are **secrets that must not reach the agent**. Three cooperating layers
+enforce this:
+
+1. **Output redaction.** Every byte streamed back through `bash`,
+   `read`, `write`, and `edit` passes through a `Redactor` that
+   replaces known-secret values with the redaction marker and rewrites
+   any `NAME=value` it spots whose name matches the secret heuristic
+   (catches `printenv`, `env`, `declare -p`, `(NAME=v)`, `$(NAME=v)`,
+   `${NAME=v}`, and `` `NAME=v` ``). ANSI escape sequences are stripped
+   before matching so a split-by-colour bypass cannot sneak a secret
+   through.
+2. **Bash env stripping.** Before `just-bash` constructs its shell,
+   secret entries are removed from the env map so the agent's
+   `$ANTHROPIC_API_KEY` is empty and `env` / `printenv` cannot find a
+   value to print. This prevents the agent from **using** a secret
+   (e.g. as a curl header) even when the output would have been
+   redacted. Controlled by `--sandbox-strip-bash-env`.
+3. **Host binary bridge env filtering.** Host binaries exposed via
+   `--sandbox-host-binaries` (e.g. `storm`) inherit only the non-secret
+   subset of `process.env`, with an explicit opt-in list via
+   `--sandbox-host-binary-env-allow` for the tokens the bridge itself
+   needs. Stdout / stderr of the spawned binary also pass through the
+   redactor.
+
+**Binary safety.** `read` / `edit` only redact content that passes a
+strict UTF-8 whitelist (no NUL byte in the first 8 KiB, strictly
+decodable as UTF-8, no image magic bytes). Image and binary files are
+returned untouched so MIME sniffing and downstream image tooling keep
+working.
+
+**What redaction does NOT cover.** Redaction hides values from LLM
+output; it does not prevent a host binary you chose to bridge from
+writing wherever its flags allow (e.g. `storm -o /absolute/path`).
+Restrict `--sandbox-host-binaries` to tools whose filesystem reach you
+are comfortable granting.
 
 ### Tool behaviour at a glance
 

@@ -42,18 +42,48 @@ export function detectImageMagic(bytes: Uint8Array): string | null {
   return null;
 }
 
+const TEXT_SAMPLE_BYTES = 8192;
+
 /**
- * Heuristic check for binary content beyond known image formats. A
- * buffer is deemed binary if it contains a NUL byte in the first 4 KiB
- * - a common signal used by `file(1)` / git - or if known image magic
- * bytes match. Used to skip UTF-8 redaction over content that would
- * otherwise be silently corrupted by the round-trip.
+ * Whitelist text detector. Returns true only when the buffer's prefix:
+ *   - is not an image (magic-byte match),
+ *   - contains no NUL bytes in the first TEXT_SAMPLE_BYTES (catches
+ *     UTF-16, UTF-32, and most compiled / compressed formats), and
+ *   - decodes as strict UTF-8 via `TextDecoder({ fatal: true })`.
+ *
+ * Before decoding we trim any dangling multibyte sequence at the sample
+ * tail so a well-formed large file is not rejected by a mid-codepoint
+ * truncation at the sample boundary.
+ *
+ * Used as the gate for UTF-8 round-trip redaction - any input that
+ * fails the whitelist is returned untouched to avoid silent corruption.
  */
-export function looksBinary(bytes: Uint8Array): boolean {
-  if (detectImageMagic(bytes) !== null) return true;
-  const scan = Math.min(bytes.length, 4096);
-  for (let i = 0; i < scan; i++) {
-    if (bytes[i] === 0x00) return true;
+export function looksText(bytes: Uint8Array): boolean {
+  if (detectImageMagic(bytes) !== null) return false;
+  const limit = Math.min(bytes.length, TEXT_SAMPLE_BYTES);
+  for (let i = 0; i < limit; i++) {
+    if (bytes[i] === 0x00) return false;
   }
-  return false;
+  const safeEnd = trimmedUtf8BoundaryEnd(bytes, limit);
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, safeEnd));
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function trimmedUtf8BoundaryEnd(bytes: Uint8Array, end: number): number {
+  if (end <= 0) return 0;
+  for (let i = end - 1, n = 0; i >= 0 && n < 4; i--, n++) {
+    const byte = bytes[i];
+    if (byte === undefined) return end;
+    if ((byte & 0x80) === 0x00) return i + 1;
+    if ((byte & 0xc0) === 0x80) continue;
+    if ((byte & 0xe0) === 0xc0) return n >= 1 ? end : i;
+    if ((byte & 0xf0) === 0xe0) return n >= 2 ? end : i;
+    if ((byte & 0xf8) === 0xf0) return n >= 3 ? end : i;
+    return i;
+  }
+  return end;
 }
