@@ -16,12 +16,15 @@
     "dist"
   ],
   "scripts": {
+    "ensure:just-bash-patch": "node scripts/ensure-just-bash-patch.mjs",
+    "prebuild": "npm run ensure:just-bash-patch",
     "build": "tsgo -p tsconfig.build.json",
     "dev": "tsgo -p tsconfig.build.json --watch",
     "typecheck": "tsgo --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
+    "pretest": "npm run ensure:just-bash-patch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

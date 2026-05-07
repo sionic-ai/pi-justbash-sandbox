@@ -6,6 +6,6 @@
  *
  * See ARCHITECTURE.md for the rationale and migration path.
  */
-declare const _default: (api: import("@mariozechner/pi-coding-agent").ExtensionAPI) => Promise<void>;
+declare const _default: (api: import("@code-yeongyu/senpi").ExtensionAPI) => Promise<void>;
 export default _default;
 //# sourceMappingURL=entry-senpi.d.ts.map
