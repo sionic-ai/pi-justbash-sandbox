@@ -65,10 +65,14 @@ jobs:
 
       - name: Install (pnpm)
         if: matrix.pkg == 'pnpm'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
         run: pnpm install --frozen-lockfile
 
       - name: Install (bun)
         if: matrix.pkg == 'bun'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
         run: bun install --frozen-lockfile
 
       - name: Lint
