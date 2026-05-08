@@ -63,6 +63,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
+      - name: Configure GitHub Packages auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+
       - name: Install (pnpm)
         if: matrix.pkg == 'pnpm'
         run: pnpm install --frozen-lockfile
