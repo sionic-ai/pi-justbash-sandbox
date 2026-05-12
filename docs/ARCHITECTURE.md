@@ -155,8 +155,8 @@ cannot block the extension from loading.
 ### Current Status: pi Only
 
 The extension is currently deployed for `@mariozechner/pi-coding-agent` only
-(the canonical pi-mono host). senpi (`@code-yeongyu/senpi`, a fork) is not yet
-supported in a single package due to pi-mono's extension loader design.
+(the canonical pi-mono host). senpi is not yet supported in a single package due
+to pi-mono's extension loader design.
 
 ### Why senpi Is Blocked
 
@@ -173,8 +173,8 @@ graceful fallback for optional multi-host scenarios.
 - jiti (the module loader used by pi-mono) intercepts static imports via
   `VIRTUAL_MODULES` aliases
 - Dynamic imports bypass `VIRTUAL_MODULES` and use Node's native resolver
-- pi's `VIRTUAL_MODULES` binds `@mariozechner/pi-coding-agent` but not
-  `@code-yeongyu/senpi`
+- pi's `VIRTUAL_MODULES` binds `@mariozechner/pi-coding-agent` but not the senpi
+  package name
 - Attempting a 2-entry strategy (one for each host) results in the senpi
   entry failing module resolution in pi environments, triggering process exit
 
@@ -201,9 +201,9 @@ To support both hosts in a single package:
 
 ### senpi Entry Retention
 
-`src/entry-senpi.ts` is committed but unused (marked `@deprecated`) to:
-- Serve as a reference for future migration
-- Avoid rewriting when pi-mono's loader is updated
+`src/entry-senpi.ts` is committed as an unused deprecated placeholder to:
+- Keep a stable filename for future migration
+- Avoid reintroducing package-manager plumbing until pi-mono's loader is updated
 - Make the limitation explicit in code
 
 Once pi-mono's loader improves, uncomment the entry in `package.json#pi.extensions`
