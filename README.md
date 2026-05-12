@@ -26,26 +26,6 @@ See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the data flow,
 facts the design is anchored to, and [`docs/AGENT_BRIEF.md`](./docs/AGENT_BRIEF.md)
 for the phase-by-phase implementation roadmap.
 
-## Temporary just-bash UTF-8 override
-
-This package temporarily depends on
-`npm:@code-yeongyu/just-bash@2.14.5-utf8.0` from GitHub Packages instead of
-plain `just-bash` from npmjs.org. This carries UTF-8 mojibake fixes while the
-upstream PR set is still in flight:
-
-- `vercel-labs/just-bash#219`
-- `vercel-labs/just-bash#222` through `#231`
-
-Auth requirements for installs:
-
-- Registry mapping is committed in `.npmrc`:
-  `@code-yeongyu:registry=https://npm.pkg.github.com`
-- Provide a token with `read:packages` via `NODE_AUTH_TOKEN` (CI) or `~/.npmrc`
-  (local development)
-
-Once upstream merges/releases these fixes, revert dependency back to
-`just-bash@^X.Y.Z` and delete this repository `.npmrc` mapping.
-
 ## Install
 
 This package is **not published to npm**. Install it from GitHub, a
