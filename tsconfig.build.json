@@ -17,10 +17,7 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "types": ["node"],
-    "paths": {
-      "@code-yeongyu/senpi": ["./node_modules/@mariozechner/pi-coding-agent"]
-    }
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "test", "coverage"]
