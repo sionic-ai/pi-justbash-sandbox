@@ -1,11 +1,10 @@
 /**
  * @deprecated senpi support is not yet integrated into the pi.extensions
- * manifest. This entry file is retained for future use when pi-mono's
+ * manifest. This placeholder is retained for future use when pi-mono's
  * extension loader can handle failed entries without exiting the entire
  * process.
  *
  * See ARCHITECTURE.md for the rationale and migration path.
  */
-declare const _default: (api: import("@mariozechner/pi-coding-agent").ExtensionAPI) => Promise<void>;
-export default _default;
+export { default } from "./entry-pi.js";
 //# sourceMappingURL=entry-senpi.d.ts.map

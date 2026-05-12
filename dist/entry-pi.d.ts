@@ -3,10 +3,9 @@
  * `@mariozechner/pi-coding-agent` host.
  *
  * Loaded by pi via `package.json#pi.extensions` when the host runtime
- * resolves `@mariozechner/pi-coding-agent` successfully. Under
- * `@code-yeongyu/senpi`, jiti's virtualModules alias for
- * `@mariozechner/pi-coding-agent` is absent and the host loader silently
- * skips this entry, letting `entry-senpi.js` take over.
+ * resolves `@mariozechner/pi-coding-agent` successfully. Other pi-compatible
+ * hosts may need their own entry once pi-mono supports optional extension
+ * entries without failing the whole load.
  */
 declare const _default: (api: import("@mariozechner/pi-coding-agent").ExtensionAPI) => Promise<void>;
 export default _default;

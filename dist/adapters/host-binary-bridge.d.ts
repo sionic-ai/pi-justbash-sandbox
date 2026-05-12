@@ -39,8 +39,8 @@ export interface HostBinaryBridgeOptions {
  *
  * Each returned command:
  * - Spawns the real host binary via `node:child_process.spawn`.
- * - Inherits the caller's stdin buffer (just-bash passes pipe stdin via
- *   `ctx.stdin`) and streams stdout/stderr back through
+ * - Inherits the caller's stdin byte buffer (just-bash passes pipe stdin via
+ *   `ctx.stdin` as `ByteString`) and streams stdout/stderr back through
  *   {@link CommandContext.write}.
  * - Uses the caller's virtual `cwd` directly; just-bash passes it through
  *   as the real host cwd for the spawned process so the tool sees the
