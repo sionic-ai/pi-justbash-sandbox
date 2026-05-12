@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { Command } from "just-bash";
-import { defineCommand } from "just-bash";
+import { defineCommand, latin1FromBytes } from "just-bash";
 import { Redactor } from "../security/redactor.js";
 import { isSecretEnvName, type SecretEnvClassifierOptions } from "../security/secret-env.js";
 
@@ -43,8 +43,8 @@ export interface HostBinaryBridgeOptions {
  *
  * Each returned command:
  * - Spawns the real host binary via `node:child_process.spawn`.
- * - Inherits the caller's stdin buffer (just-bash passes pipe stdin via
- *   `ctx.stdin`) and streams stdout/stderr back through
+ * - Inherits the caller's stdin byte buffer (just-bash passes pipe stdin via
+ *   `ctx.stdin` as `ByteString`) and streams stdout/stderr back through
  *   {@link CommandContext.write}.
  * - Uses the caller's virtual `cwd` directly; just-bash passes it through
  *   as the real host cwd for the spawned process so the tool sees the
@@ -123,8 +123,9 @@ function buildBridgeCommand(
     child.stdout?.on("data", (data: Buffer) => stdoutChunks.push(data));
     child.stderr?.on("data", (data: Buffer) => stderrChunks.push(data));
 
-    if (ctx.stdin.length > 0) {
-      child.stdin?.write(ctx.stdin);
+    const stdinBytes = Buffer.from(latin1FromBytes(ctx.stdin), "latin1");
+    if (stdinBytes.length > 0) {
+      child.stdin?.write(stdinBytes);
     }
     child.stdin?.end();
 
